@@ -20,7 +20,7 @@ export function Capture({ onCaptured, onBack, onUseUploadInstead }: Props) {
 
   function handleShutter() {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || video.readyState < video.HAVE_CURRENT_DATA) return;
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth || 1080;
     canvas.height = video.videoHeight || 1260;
@@ -41,7 +41,7 @@ export function Capture({ onCaptured, onBack, onUseUploadInstead }: Props) {
   if (error) {
     return (
       <div className="capture capture--error">
-        <p>We couldn&apos;t access your camera. Please upload a photo instead.</p>
+        <p role="alert">We couldn&apos;t access your camera. Please upload a photo instead.</p>
         <button type="button" onClick={onUseUploadInstead}>
           Upload instead
         </button>
@@ -54,12 +54,18 @@ export function Capture({ onCaptured, onBack, onUseUploadInstead }: Props) {
 
   return (
     <div className="capture">
-      <button type="button" aria-label="Close" onClick={onBack}>
+      <button type="button" className="capture__close" aria-label="Close" onClick={onBack}>
         ×
       </button>
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video ref={videoRef} autoPlay playsInline muted />
-      <button type="button" aria-label="Shutter" onClick={handleShutter} />
+      <button
+        type="button"
+        className="capture__shutter"
+        aria-label="Shutter"
+        onClick={handleShutter}
+        disabled={!stream}
+      />
     </div>
   );
 }

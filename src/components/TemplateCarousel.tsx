@@ -9,15 +9,14 @@ type Props = {
 
 export function TemplateCarousel({ templates, selectedId, onSelect }: Props) {
   return (
-    <div className="template-carousel" role="listbox" aria-label="Choose a frame">
+    <div className="template-carousel">
       {templates.map((template) => {
         const selected = template.id === selectedId;
         return (
           <button
             key={template.id}
             type="button"
-            role="option"
-            aria-selected={selected}
+            aria-pressed={selected}
             className={`template-carousel__item${selected ? ' template-carousel__item--selected' : ''}`}
             onClick={() => onSelect(template.id)}
           >

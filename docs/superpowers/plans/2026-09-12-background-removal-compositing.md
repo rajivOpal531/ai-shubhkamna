@@ -1581,6 +1581,9 @@ COPY app ./app
 COPY templates ./templates
 
 EXPOSE 8000
+# --forwarded-allow-ips="*" trusts X-Forwarded-For from any peer. Railway terminates TLS in front of
+# the container and does not publish a fixed proxy CIDR; the per-bearer rate limit is the control that
+# does not depend on this header. Narrow this to the proxy range if one becomes available.
 CMD uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips="*"
 ```
 
@@ -1982,7 +1985,7 @@ git commit -m "docs(server): record Railway deployment URL"
 
 ## Self-review
 
-**Review-driven additions (2026-09-13, Task 7 round):** rate limit keyed by bearer hash with IP fallback and optional `RATE_LIMIT_STORAGE_URI`; body limit moved into `app/body_limit.py` (ASGI middleware, runs before auth and before FastAPI spools multipart); token-validator outages return 503 and the validate URL is checked at startup; load shedding at 4× the concurrency cap; catch-all 500 logged with a request id that is also returned in `X-Request-Id`; spec error table amended accordingly.
+**Review-driven additions (2026-09-13, Task 7 round):** rate limit stacked per bearer hash (`RATE_LIMIT_PER_MINUTE`) and per source IP (`RATE_LIMIT_PER_IP_PER_MINUTE`, default 30) so neither a rotated token nor a spoofed forwarded header alone defeats it and optional `RATE_LIMIT_STORAGE_URI`; body limit moved into `app/body_limit.py` (ASGI middleware, runs before auth and before FastAPI spools multipart); token-validator outages return 503 and the validate URL is checked at startup; load shedding at 4× the concurrency cap; catch-all 500 logged with a request id that is also returned in `X-Request-Id`; spec error table amended accordingly.
 
 **Review-driven additions (2026-09-13):** Task 3 tests the bundled font; Task 7 caps form fields at 120 chars and limits concurrent compositing with an `anyio.CapacityLimiter` (`MAX_CONCURRENT_COMPOSITES`, default 2); Task 8's Dockerfile installs libraqm and asserts Pillow sees it, because Poppins carries Devanagari but correct shaping needs HarfBuzz. Whether Indian-script names are in scope for launch is an open product question raised to the user.
 

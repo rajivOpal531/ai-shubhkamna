@@ -154,10 +154,14 @@ with-vector set. Committed under `server/templates/clean/card-<n>.jpg`.
 ## Security and limits
 
 - **CORS**: `ALLOWED_ORIGINS` (comma-separated). Only these origins pass preflight. No wildcard.
-- **Rate limit**: `slowapi`, keyed by a hash of the bearer token when present (the thing we want to
-  budget, and immune to spoofed `X-Forwarded-For`), falling back to client IP. Default
-  `RATE_LIMIT_PER_MINUTE=10`. Counters are in-memory per process; set `RATE_LIMIT_STORAGE_URI`
-  (for example a Redis URL) before running more than one replica.
+- **Rate limit**: `slowapi`, two stacked limits on `POST /composite`, both must pass:
+  per bearer-token hash (`RATE_LIMIT_PER_MINUTE`, default 10; the budget we actually care about)
+  and per source IP across all tokens (`RATE_LIMIT_PER_IP_PER_MINUTE`, default 30; stops a caller
+  from rotating forged tokens). Neither key alone is trustworthy: tokens are unvalidated unless
+  `JWT_VALIDATE_URL` is set, and the IP comes from `X-Forwarded-For`, so `--forwarded-allow-ips`
+  should name the platform proxy rather than `*` once Railway's proxy range is known. Counters are
+  in-memory per process; set `RATE_LIMIT_STORAGE_URI` (a Redis URL) before running more than one
+  replica.
 - **JWT**: required header. Not decoded. A 12-char SHA-256 prefix of the token is logged per
   request. If `JWT_VALIDATE_URL` is set, the service performs `GET JWT_VALIDATE_URL` with the same
   bearer before processing and rejects with 401 on any non-200. A network error or the 5 s timeout
@@ -206,7 +210,8 @@ results to `createPostByImageUrl`.
 | `S3_PREFIX` | no | `ai-shubh` (default) |
 | `S3_PUBLIC_READ_ACL` | no | `false` (default) |
 | `ALLOWED_ORIGINS` | yes | `https://shubhkamnauat.narendramodi.in` |
-| `RATE_LIMIT_PER_MINUTE` | no | `10` (default) |
+| `RATE_LIMIT_PER_MINUTE` | no | `10` (default), per bearer token |
+| `RATE_LIMIT_PER_IP_PER_MINUTE` | no | `30` (default), per source IP |
 | `JWT_VALIDATE_URL` | no | empty = skip validation |
 | `MAX_CONCURRENT_COMPOSITES` | no | `2` (default) |
 | `RATE_LIMIT_STORAGE_URI` | no | empty = in-memory; Redis URL for multi-replica |

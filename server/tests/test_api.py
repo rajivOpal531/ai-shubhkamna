@@ -373,6 +373,45 @@ def test_cors_exposes_request_id(client):
     assert "x-request-id" in response.headers.get("access-control-expose-headers", "").lower()
 
 
+def test_route_raised_400_gets_distinct_request_ids(client):
+    """The unknown-template 400 is raised inside the route with a request id already attached via
+    exc.headers; the StarletteHTTPException handler in main.py must preserve it (setdefault) rather
+    than overwrite it with a fresh one. We can't read the route's minted id directly here, so this
+    checks the next best thing: the header is present, and two separate requests get two different
+    ids (i.e. nothing is falling back to some fixed/missing value)."""
+    request_id_pattern = re.compile(r"^[0-9a-f]{8}$")
+
+    first = _post(client, template="card-7")
+    second = _post(client, template="card-7")
+
+    assert first.status_code == second.status_code == 400
+    assert request_id_pattern.match(first.headers["x-request-id"])
+    assert request_id_pattern.match(second.headers["x-request-id"])
+    assert first.headers["x-request-id"] != second.headers["x-request-id"]
+
+
+def test_multipart_parse_error_carries_request_id(client):
+    """A multipart body with no boundary never reaches the route at all -- Starlette's own form
+    parser raises a plain HTTPException(400) while parsing the body. The StarletteHTTPException
+    handler in main.py must still mint a request id for it."""
+    response = client.post(
+        "/composite", content=b"xx", headers={"Content-Type": "multipart/form-data", **AUTH}
+    )
+    assert response.status_code == 400
+    assert re.match(r"^[0-9a-f]{8}$", response.headers["x-request-id"])
+
+
+def test_rate_limit_429_has_no_request_id(uploader):
+    """slowapi raises RateLimitExceeded, not HTTPException, so the StarletteHTTPException handler
+    never sees it and the 429 must remain exactly as before -- no X-Request-Id header."""
+    app = create_app(settings=make_settings(rate_limit_per_minute=1), remover=fake_remover, uploader=uploader)
+    with TestClient(app) as client:
+        assert _post(client).status_code == 200
+        response = _post(client)
+    assert response.status_code == 429
+    assert "x-request-id" not in response.headers
+
+
 def test_missing_required_field_422_carries_request_id(client):
     """FastAPI raises this 422 itself, before the route body runs -- the handler in main.py is what
     puts a request id on it."""
@@ -397,6 +436,7 @@ def test_missing_required_field_422_carries_request_id(client):
         ([(b"x-forwarded-for", b"1.1.1.1, 203.0.113.9,")], "ip:203.0.113.9"),  # trailing comma
         ([(b"x-forwarded-for", b"   ")], "ip:9.9.9.9"),  # blank header -> socket peer
         ([], "ip:9.9.9.9"),  # no header at all -> socket peer
+        ([(b"x-forwarded-for", b":8080")], "ip:9.9.9.9"),  # rightmost strips to empty -> socket peer
     ],
 )
 def test_client_ip_key_parses_forwarded_header(headers, expected):

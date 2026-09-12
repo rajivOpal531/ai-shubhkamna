@@ -13,12 +13,14 @@ import httpx
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .body_limit import BodyLimitMiddleware
 from .config import Settings, load_settings
@@ -105,12 +107,19 @@ def client_ip_key(request: Request) -> str:
     platform proxy; the leftmost is client-controlled). All header occurrences are joined first,
     as RFC 7230 requires, so a client-injected extra header line cannot shadow the proxy's. Empty
     segments (a trailing comma, say) are dropped so they cannot blank out the real rightmost entry.
-    Falls back to the socket peer. slowapi passes the request only if this parameter is literally
-    named `request`."""
+    Falls back to the raw socket peer as seen by uvicorn when the header is absent or the rightmost
+    segment strips to empty (e.g. a malformed entry like `:8080` with no host part) -- note that
+    under `--forwarded-allow-ips='*'` uvicorn rewrites that socket peer from X-Forwarded-For itself,
+    so this fallback may in turn be the leftmost forwarded entry. slowapi passes the request only if
+    this parameter is literally named `request`."""
     forwarded = ", ".join(request.headers.getlist("x-forwarded-for"))
     parts = [part.strip() for part in forwarded.split(",") if part.strip()]
     rightmost = _strip_port(parts[-1]) if parts else ""
-    return "ip:" + (rightmost or get_remote_address(request))
+    if rightmost:
+        return "ip:" + rightmost
+    client = request.scope.get("client")
+    host = client[0] if client else None
+    return "ip:" + (host or get_remote_address(request))
 
 
 async def _validate_request(
@@ -216,6 +225,16 @@ def create_app(
             content={"detail": jsonable_encoder(exc.errors())},
             headers={"X-Request-Id": request_id},
         )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> Response:
+        """Catches every HTTPException, including ones the route never gets to raise -- Starlette's
+        own multipart parser raises a plain HTTPException(400) for a malformed body (e.g. a missing
+        boundary) before the route body runs. setdefault preserves a request id the route already
+        minted and attached via exc.headers; it only mints a fresh one when none is there yet."""
+        response = await http_exception_handler(request, exc)
+        response.headers.setdefault("X-Request-Id", uuid.uuid4().hex[:8])
+        return response
 
     @app.get("/health")
     async def health() -> dict[str, Any]:

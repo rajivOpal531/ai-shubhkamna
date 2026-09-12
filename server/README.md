@@ -30,15 +30,18 @@ Success response, `200 OK`:
 { "imageUrl": "https://<bucket>.s3.<region>.amazonaws.com/<prefix>/<uuid>.jpg" }
 ```
 
-Every response the route itself produces — the success response and every 4xx/5xx it raises
-(400/401/413/415/422/500/502/503) — carries an `X-Request-Id` header: an 8-character hex id, also
-logged server-side, that a caller can quote back in a support request. FastAPI's own `422` for a
-missing or malformed field (raised before the route body runs) carries one too, minted by the
-`RequestValidationError` handler in `app/main.py`. Only two responses have no request id at all:
-the `429` from either rate limiter, and the body-limit middleware's own `413` for a request body
-that's oversized before multipart parsing even starts — both answer before any id is minted. `CORSMiddleware` is configured with `expose_headers=["X-Request-Id"]`, so a browser
-page calling this API cross-origin can read the header off the response (without that, browsers
-hide all but a handful of default response headers from cross-origin JavaScript).
+Every response this app produces carries an `X-Request-Id` header: an 8-character hex id, also
+logged server-side, that a caller can quote back in a support request. That covers the success
+response, every 4xx/5xx the route itself raises (400/401/413/415/422/500/502/503), FastAPI's own
+`422` for a missing or malformed field, and any other `HTTPException` that Starlette raises before
+the route runs at all -- for example its `400` for a multipart body with no boundary. Two exception
+handlers in `app/main.py` (for `RequestValidationError` and for `HTTPException`) mint a request id
+whenever a response doesn't already carry one from the route. Only two responses have no request id
+at all: the `429` from either rate limiter, and the body-limit middleware's own `413` for a request
+body that's oversized before multipart parsing even starts -- both answer before any id is minted.
+`CORSMiddleware` is configured with `expose_headers=["X-Request-Id"]`, so a browser page calling
+this API cross-origin can read the header off the response (without that, browsers hide all but a
+handful of default response headers from cross-origin JavaScript).
 
 Error responses:
 

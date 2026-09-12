@@ -28,9 +28,11 @@ COPY templates ./templates
 
 # Drop root for everything the app does at runtime; /models and /srv were baked by root above and
 # are world-readable, which is all the app needs.
-RUN useradd --system --uid 10001 --no-create-home appuser
+RUN useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin appuser
+ENV HOME=/tmp
 USER 10001
 
+EXPOSE 8000
 # Railway injects PORT; the default of 8000 below is for local docker run.
 # --forwarded-allow-ips='*' makes uvicorn rewrite request.client from X-Forwarded-For (leftmost
 # entry, client-controlled). The per-IP rate limit deliberately does NOT rely on request.client:

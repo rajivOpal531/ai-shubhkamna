@@ -5,5 +5,4 @@
 check-output
 tests
 tools
-README.md
-*.md
+**/*.md

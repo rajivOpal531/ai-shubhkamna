@@ -23,4 +23,18 @@ describe('useCamera', () => {
     await waitFor(() => expect(result.current.error).toBe('Permission denied'));
     expect(result.current.stream).toBeNull();
   });
+
+  it('stops tracks if unmounted before getUserMedia resolves', async () => {
+    let resolve!: (s: MediaStream) => void;
+    const track = { stop: vi.fn() };
+    const stream = { getTracks: () => [track] } as unknown as MediaStream;
+    const getUserMedia = vi.fn(() => new Promise<MediaStream>((r) => (resolve = r)));
+    const { unmount } = renderHook(() => useCamera(getUserMedia));
+
+    unmount();
+    resolve(stream);
+    await Promise.resolve();
+
+    expect(track.stop).toHaveBeenCalled();
+  });
 });

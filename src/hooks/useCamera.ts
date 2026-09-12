@@ -7,7 +7,10 @@ type CameraState = {
 
 type GetUserMedia = (constraints: MediaStreamConstraints) => Promise<MediaStream>;
 
-export function useCamera(getUserMedia: GetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)) {
+const defaultGetUserMedia: GetUserMedia = (constraints) =>
+  navigator.mediaDevices.getUserMedia(constraints);
+
+export function useCamera(getUserMedia: GetUserMedia = defaultGetUserMedia) {
   const [state, setState] = useState<CameraState>({ stream: null, error: null });
 
   useEffect(() => {
@@ -23,9 +26,10 @@ export function useCamera(getUserMedia: GetUserMedia = navigator.mediaDevices.ge
         activeStream = stream;
         setState({ stream, error: null });
       })
-      .catch((error: Error) => {
+      .catch((error: unknown) => {
         if (!cancelled) {
-          setState({ stream: null, error: error.message || 'Camera unavailable' });
+          const message = error instanceof Error ? error.message : 'Camera unavailable';
+          setState({ stream: null, error: message });
         }
       });
 

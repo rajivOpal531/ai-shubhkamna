@@ -19,6 +19,14 @@ vi.mock('./services/createPost', () => ({
   createPostByImageUrl: vi.fn().mockResolvedValue({ ok: true, status: 200 }),
   createPostWithFile: vi.fn().mockResolvedValue({ ok: true, status: 200 }),
 }));
+// homeUrl/mediaWallUrl fall back to '' when no .env is present, and `new URL('')` throws -
+// stub them with valid placeholder URLs so redirectWithJwt has a real base to build against.
+vi.mock('./config', () => ({
+  config: {
+    homeUrl: 'https://example.test/home',
+    mediaWallUrl: 'https://example.test/media-wall',
+  },
+}));
 
 import { App } from './App';
 import { createPostByImageUrl } from './services/createPost';

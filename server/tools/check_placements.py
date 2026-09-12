@@ -1,4 +1,5 @@
-"""Render every placement as outlines on its clean card for visual review.
+"""Renders every placement as outlines on the with-silhouette card from src/assets/templates
+(falls back to the clean card) so photo_box can be checked against the silhouette.
 
 Usage (from server/):  python tools/check_placements.py [output_dir]
 Exits non-zero if any box is outside the card or any file is missing.
@@ -11,37 +12,51 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from app.placements import CARD_SIZE, load_placements  # noqa: E402
+from app.placements import CARD_SIZE, Placement, load_placements  # noqa: E402
+
+VECTOR_DIR = Path(__file__).resolve().parents[2] / "src" / "assets" / "templates"
 
 
-def main(out_dir: Path) -> int:
+def vector_path(template_id: str) -> Path:
+    return VECTOR_DIR / f"pm-birthday-AI-Shubhkamna-{template_id}.jpg"
+
+
+def main(out_dir: Path, placements: dict[str, Placement] | None = None) -> int:
+    placements = load_placements() if placements is None else placements
     out_dir.mkdir(parents=True, exist_ok=True)
     problems: list[str] = []
     tiles: list[Image.Image] = []
-    for template_id, p in load_placements().items():
-        if not p.template_path.is_file():
-            problems.append(f"{template_id}: missing {p.template_path}")
+    for template_id, placement in placements.items():
+        if not placement.template_path.is_file():
+            problems.append(f"{template_id}: missing {placement.template_path}")
             continue
-        card = Image.open(p.template_path).convert("RGB")
+        source_path = vector_path(template_id)
+        if not source_path.is_file():
+            source_path = placement.template_path
+        card = Image.open(source_path).convert("RGB")
         if card.size != CARD_SIZE:
             problems.append(f"{template_id}: size {card.size} != {CARD_SIZE}")
-        for label, box in (("photo_box", p.photo_box), ("text_box", p.text_box)):
+        for label, box in (("photo_box", placement.photo_box), ("text_box", placement.text_box)):
             if not box.inside(card.size):
                 problems.append(f"{template_id}: {label} {box} outside card")
         draw = ImageDraw.Draw(card)
-        pb, tb = p.photo_box, p.text_box
+        pb, tb = placement.photo_box, placement.text_box
         draw.rectangle((pb.x, pb.y, pb.right - 1, pb.bottom - 1), outline=(0, 255, 0), width=6)
         draw.rectangle((tb.x, tb.y, tb.right - 1, tb.bottom - 1), outline=(255, 0, 255), width=5)
         card.save(out_dir / f"{template_id}.jpg", quality=85)
         tiles.append(card.resize((360, 420)))
-    cols = 4
-    rows = (len(tiles) + cols - 1) // cols
-    sheet = Image.new("RGB", (360 * cols, 420 * rows), "white")
-    for i, tile in enumerate(tiles):
-        sheet.paste(tile, ((i % cols) * 360, (i // cols) * 420))
-    sheet.save(out_dir / "contact-sheet.jpg", quality=88)
+
     for problem in problems:
         print("PROBLEM:", problem)
+
+    if tiles:
+        cols = 4
+        rows = (len(tiles) + cols - 1) // cols
+        sheet = Image.new("RGB", (360 * cols, 420 * rows), "white")
+        for i, tile in enumerate(tiles):
+            sheet.paste(tile, ((i % cols) * 360, (i // cols) * 420))
+        sheet.save(out_dir / "contact-sheet.jpg", quality=88)
+
     print(f"wrote {len(tiles)} cards + contact-sheet.jpg to {out_dir}")
     return 1 if problems else 0
 

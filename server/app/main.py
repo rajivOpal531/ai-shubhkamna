@@ -68,7 +68,13 @@ def _bearer(authorization: str) -> str:
 
 
 def rate_limit_key(request: Request) -> str:
-    """Budget per bearer token (the thing we actually want to cap); fall back to the client IP."""
+    """Budget per bearer token (the thing we actually want to cap); fall back to the client IP.
+
+    The token is unvalidated at this point, so this key alone is rotatable: POST /composite also
+    carries a per-source-IP limit (see create_app) that caps a caller minting fresh tokens.
+    A 429 from either limit -- and the middleware's own 413 -- carries no X-Request-Id, because
+    both answer before the route runs and no request id has been minted yet.
+    """
     token = _bearer(request.headers.get("authorization", ""))
     if token:
         return "jwt:" + hashlib.sha256(token.encode()).hexdigest()[:32]
@@ -111,7 +117,10 @@ def create_app(
     runtime = Runtime(remover=remover, uploader=uploader)
 
     if settings.jwt_validate_url:
-        parsed = httpx.URL(settings.jwt_validate_url)
+        try:
+            parsed = httpx.URL(settings.jwt_validate_url)
+        except httpx.InvalidURL as exc:
+            raise ValueError("JWT_VALIDATE_URL is not a valid http(s) URL") from exc
         if parsed.scheme not in ("http", "https") or not parsed.host:
             raise ValueError("JWT_VALIDATE_URL is not a valid http(s) URL")
 
@@ -170,8 +179,11 @@ def create_app(
             "uploader_ready": runtime.uploader is not None,
         }
 
+    # Both limits must pass. The bearer bucket is the one we care about, but it is keyed on an
+    # unvalidated token, so the per-IP bucket is the backstop against a caller rotating tokens.
     @app.post("/composite")
-    @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+    @limiter.limit(f"{settings.rate_limit_per_minute}/minute")  # per bearer token (rate_limit_key)
+    @limiter.limit(f"{settings.rate_limit_per_ip_per_minute}/minute", key_func=get_remote_address)  # per source IP
     async def composite(
         request: Request,
         response: Response,
@@ -208,6 +220,8 @@ def create_app(
             hashlib.sha256(token.encode()).hexdigest()[:12],
             len(data),
         )
+        # Approximate ceiling: this read and the acquire below are not atomic, so a burst can
+        # push the queue slightly past the bound before the next request sees it.
         if composite_limiter.statistics().tasks_waiting >= settings.max_concurrent_composites * QUEUE_FACTOR:
             raise HTTPException(status_code=503, detail="Busy, retry shortly", headers=rid)
 

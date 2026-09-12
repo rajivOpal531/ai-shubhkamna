@@ -183,13 +183,18 @@ def test_photo_of_exactly_the_limit_is_not_413(client, monkeypatch):
 
 
 def test_rate_limit_is_keyed_by_bearer_not_ip(uploader):
-    app = create_app(settings=make_settings(rate_limit_per_minute=1), remover=fake_remover, uploader=uploader)
+    # The per-IP ceiling is raised out of the way so only the per-bearer budget can fire.
+    app = create_app(
+        settings=make_settings(rate_limit_per_minute=1, rate_limit_per_ip_per_minute=100),
+        remover=fake_remover,
+        uploader=uploader,
+    )
     with TestClient(app) as client:
-        first = _post(client, headers={**AUTH, "X-Forwarded-For": "10.0.0.1"})
-        second = _post(client, headers={**AUTH, "X-Forwarded-For": "10.0.0.2"})
+        first = _post(client)
+        second = _post(client)
         other = _post(client, headers={"Authorization": "Bearer other-token"})
     assert first.status_code == 200
-    assert second.status_code == 429, "same bearer from a different IP must share the budget"
+    assert second.status_code == 429, "the same bearer must share one budget"
     assert other.status_code == 200, "a different bearer gets its own budget"
 
 
@@ -272,9 +277,11 @@ def test_validator_outage_is_503(uploader):
     assert response.json()["detail"] == "Token check unavailable, retry shortly"
 
 
-def test_invalid_validate_url_fails_at_startup():
+@pytest.mark.parametrize("bad_url", ["not a url", "http://[::1", "ftp://x.example/v"])
+def test_invalid_validate_url_fails_at_startup(bad_url):
+    """Including the ones httpx rejects itself: InvalidURL must not escape create_app."""
     with pytest.raises(ValueError, match="JWT_VALIDATE_URL"):
-        create_app(settings=make_settings(jwt_validate_url="not a url"))
+        create_app(settings=make_settings(jwt_validate_url=bad_url))
 
 
 def test_unexpected_error_is_500_with_request_id(uploader):
@@ -288,3 +295,18 @@ def test_unexpected_error_is_500_with_request_id(uploader):
     request_id = response.headers["x-request-id"]
     assert len(request_id) == 8 and int(request_id, 16) >= 0
     assert f"req {request_id}" in response.json()["detail"]
+
+
+def test_per_ip_ceiling_applies_across_rotated_bearers(uploader):
+    """A forged bearer per request would otherwise buy a fresh bucket every time;
+    the per-IP limit stacked under the per-bearer one is what stops that."""
+    app = create_app(
+        settings=make_settings(rate_limit_per_minute=100, rate_limit_per_ip_per_minute=2),
+        remover=fake_remover,
+        uploader=uploader,
+    )
+    with TestClient(app) as client:
+        codes = [
+            _post(client, headers={"Authorization": f"Bearer forged-{i}"}).status_code for i in range(3)
+        ]
+    assert codes == [200, 200, 429], "the third request from this IP must be shed regardless of token"

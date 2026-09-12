@@ -7,6 +7,7 @@ def test_defaults_when_env_is_empty():
     assert s.s3_public_read_acl is False
     assert s.allowed_origins == []
     assert s.rate_limit_per_minute == 10
+    assert s.rate_limit_per_ip_per_minute == 30
     assert s.rate_limit_storage_uri == ""
     assert s.jwt_validate_url == ""
     assert s.max_upload_bytes == 10 * 1024 * 1024
@@ -24,6 +25,7 @@ def test_parses_env_values():
             "S3_PUBLIC_READ_ACL": "TRUE",
             "ALLOWED_ORIGINS": "https://a.example, https://b.example ,",
             "RATE_LIMIT_PER_MINUTE": "3",
+            "RATE_LIMIT_PER_IP_PER_MINUTE": "7",
             "RATE_LIMIT_STORAGE_URI": " redis://cache:6379/0 ",
             "JWT_VALIDATE_URL": "https://api.example/validate",
             "REMBG_MODEL": "u2net",
@@ -36,6 +38,7 @@ def test_parses_env_values():
     assert s.s3_public_read_acl is True
     assert s.allowed_origins == ["https://a.example", "https://b.example"]
     assert s.rate_limit_per_minute == 3
+    assert s.rate_limit_per_ip_per_minute == 7
     assert s.rate_limit_storage_uri == "redis://cache:6379/0"
     assert s.jwt_validate_url == "https://api.example/validate"
     assert s.model_name == "u2net"

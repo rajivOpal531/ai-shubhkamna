@@ -7,9 +7,13 @@ routing, counts bytes as they arrive and answers 413 itself.
 """
 from __future__ import annotations
 
+import logging
+
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+log = logging.getLogger("ai-shubh.body_limit")
 
 
 class BodyLimitMiddleware:
@@ -58,11 +62,20 @@ class BodyLimitMiddleware:
         except Exception:
             if not state["answered"]:
                 raise  # a genuine failure, not the disconnect we faked
+            # We already sent the 413, so the app is just reacting to the disconnect we faked.
+            # Keep the traceback out of the error log but not out of reach when debugging.
+            log.debug("dropped post-413 error", exc_info=True)
 
     async def _reject(self, scope: Scope, send: Send) -> None:
         async def _no_receive() -> Message:  # Response never reads it
             return {"type": "http.disconnect"}
 
-        megabytes = self.max_bytes // (1024 * 1024)
-        response = JSONResponse({"detail": f"Body larger than {megabytes} MB"}, status_code=413)
+        response = JSONResponse({"detail": self._too_large_message()}, status_code=413)
         await response(scope, _no_receive, send)
+
+    def _too_large_message(self) -> str:
+        """MB reads well for real caps; a sub-megabyte cap (tests, tiny deployments) would
+        otherwise render as 'larger than 0 MB'."""
+        if self.max_bytes < 1024 * 1024:
+            return f"Body larger than {self.max_bytes} bytes"
+        return f"Body larger than {self.max_bytes // (1024 * 1024)} MB"

@@ -14,6 +14,7 @@ class Settings:
     s3_public_read_acl: bool
     allowed_origins: list[str]
     rate_limit_per_minute: int
+    rate_limit_per_ip_per_minute: int
     rate_limit_storage_uri: str
     jwt_validate_url: str
     max_upload_bytes: int
@@ -32,6 +33,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         s3_public_read_acl=env.get("S3_PUBLIC_READ_ACL", "false").strip().lower() == "true",
         allowed_origins=origins,
         rate_limit_per_minute=int(env.get("RATE_LIMIT_PER_MINUTE", "10")),
+        rate_limit_per_ip_per_minute=int(env.get("RATE_LIMIT_PER_IP_PER_MINUTE", "30")),
         rate_limit_storage_uri=env.get("RATE_LIMIT_STORAGE_URI", "").strip(),
         jwt_validate_url=env.get("JWT_VALIDATE_URL", "").strip(),
         max_upload_bytes=10 * 1024 * 1024,

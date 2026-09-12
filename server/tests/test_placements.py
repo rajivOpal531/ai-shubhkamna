@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from app.placements import ALIGNMENTS, CARD_SIZE, Box, TEMPLATES_DIR, load_placements
 
@@ -43,6 +44,12 @@ def test_every_frontend_template_has_a_placement_and_a_clean_file():
     assert set(placements) == frontend_ids
     for placement in placements.values():
         assert placement.template_path.is_file(), placement.template_path
+
+
+def test_clean_templates_are_card_size():
+    for placement in load_placements().values():
+        with Image.open(placement.template_path) as img:
+            assert img.size == CARD_SIZE, placement.template_id
 
 
 def test_all_boxes_lie_inside_the_card():

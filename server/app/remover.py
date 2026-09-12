@@ -14,6 +14,7 @@ def make_remover(model_name: str) -> Remover:
 
     session = new_session(model_name)
 
+    # The rembg/ONNX session is shared across threads; InferenceSession.run is documented thread-safe.
     def _remove(img: Image.Image) -> Image.Image:
         return remove(img, session=session).convert("RGBA")
 

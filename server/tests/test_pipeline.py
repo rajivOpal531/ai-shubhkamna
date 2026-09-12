@@ -1,13 +1,21 @@
 import io
+import time
+from collections import Counter
 
 import pytest
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 from app.pipeline import (
+    FONT_PATH,
     MAX_SIDE,
+    MIN_FONT_SCALE,
     BadImageError,
     NoSubjectError,
     TextFields,
+    _fit_font,
+    _load_font,
+    _sample_background,
+    _truncate,
     compose,
     crop_to_subject,
     decode_photo,
@@ -161,6 +169,13 @@ def test_text_lines_skips_blank_fields():
     ]
 
 
+def test_text_lines_collapses_whitespace():
+    assert text_lines(TextFields(name="Rajiv\nRanjan", constituency=" Patna\tSahib ", state="Bihar")) == [
+        "-Rajiv Ranjan",
+        "Patna Sahib, Bihar",
+    ]
+
+
 def _synthetic_placement(align: str = "left", text_color: str = "#FF0000") -> Placement:
     return Placement(
         template_id="synthetic",
@@ -193,7 +208,8 @@ def test_draw_text_block_right_aligns_when_requested():
         x for x in range(20, 180) if any(card.getpixel((x, y)) != (255, 255, 255) for y in range(20, 80))
     ]
     assert cols_with_ink, "expected some text ink"
-    assert min(cols_with_ink) > 100, "short right-aligned text should sit in the right half of the box"
+    assert max(cols_with_ink) >= placement.text_box.right - 1 - 3, "ink should reach the right edge of the box"
+    assert min(cols_with_ink) > placement.text_box.x + 10, "short right-aligned text should sit in the right half"
 
 
 def test_draw_text_block_truncates_long_lines_with_ellipsis():
@@ -201,6 +217,85 @@ def test_draw_text_block_truncates_long_lines_with_ellipsis():
     placement = _synthetic_placement(text_color="#000000")
     draw_text_block(card, placement, TextFields(name="A" * 200))
     assert all(card.getpixel((x, 40)) == (255, 255, 255) for x in range(181, 300)), "ink must stay inside the box"
+    assert any(
+        card.getpixel((x, y)) != (255, 255, 255) for x in range(20, 180) for y in range(20, 80)
+    ), "expected some ink to have been drawn inside the box"
+
+
+def test_truncate_returns_fitting_prefix_with_ellipsis():
+    img = Image.new("RGB", (300, 100), "white")
+    draw = ImageDraw.Draw(img)
+    font = _load_font(FONT_PATH, 24)
+
+    result = _truncate(draw, "A" * 200, font, 150)
+    assert result.endswith("…")
+    assert len(result) < 200
+    assert draw.textlength(result, font=font) <= 150
+
+    assert _truncate(draw, "Ab", font, 150) == "Ab"
+
+
+def test_truncate_is_fast_on_long_input():
+    img = Image.new("RGB", (300, 100), "white")
+    draw = ImageDraw.Draw(img)
+    font = _load_font(FONT_PATH, 24)
+
+    start = time.perf_counter()
+    _truncate(draw, "A" * 5000, font, 150)
+    assert time.perf_counter() - start < 0.5
+
+
+def test_fit_font_shrinks_but_not_below_floor():
+    img = Image.new("RGB", (300, 300), "white")
+    draw = ImageDraw.Draw(img)
+
+    long_line_font = _fit_font(draw, ["A" * 200], FONT_PATH, 24, 160)
+    assert round(24 * MIN_FONT_SCALE) <= long_line_font.size < 24
+
+    short_line_font = _fit_font(draw, ["Ab"], FONT_PATH, 24, 160)
+    assert short_line_font.size == 24
+
+
+def test_draw_text_block_shrinks_long_location_instead_of_truncating():
+    """A location line that doesn't fit at the placement's font size, but does fit once
+    shrunk toward MIN_FONT_SCALE, should be shrunk rather than truncated with an ellipsis."""
+    img = Image.new("RGB", (300, 300), "white")
+    draw = ImageDraw.Draw(img)
+    box_width = _synthetic_placement().text_box.w
+
+    line = "Madhya Pradesh"
+    font = _fit_font(draw, [line], FONT_PATH, 24, box_width)
+    assert font.size < 24, "line should have required shrinking at the synthetic box width"
+    assert _truncate(draw, line, font, box_width) == line, "shrunk text should fit without truncation"
+
+
+def test_sample_background_matches_dominant_block_colour_on_every_template():
+    for placement in load_placements().values():
+        tb = placement.text_box
+        with Image.open(placement.template_path) as template:
+            card = template.convert("RGB")
+        dominant, _ = Counter(card.crop((tb.x, tb.y, tb.right, tb.bottom)).getdata()).most_common(1)[0]
+        sampled = _sample_background(card, tb)
+        assert all(abs(sampled[i] - dominant[i]) <= 10 for i in range(3)), (placement.template_id, sampled, dominant)
+
+
+def test_draw_text_block_ink_stays_inside_text_box_on_every_template():
+    fields = TextFields(name="Rajiv Ranjan", constituency="Gautam Buddha Nagar", state="Uttar Pradesh")
+    for placement in load_placements().values():
+        with Image.open(placement.template_path) as template:
+            original = template.convert("RGB")
+        copy = original.copy()
+        draw_text_block(copy, placement, fields)
+        diff = ImageChops.difference(copy, original).convert("L").point(lambda p: 255 if p > 24 else 0)
+        bbox = diff.getbbox()
+        assert bbox is not None, f"{placement.template_id}: expected drawing to change some pixels"
+        bx0, by0, bx1, by1 = bbox
+        tb = placement.text_box
+        assert bx0 >= tb.x and by0 >= tb.y and bx1 <= tb.right and by1 <= tb.bottom, (
+            placement.template_id,
+            bbox,
+            tb,
+        )
 
 
 def test_compose_end_to_end_produces_a_jpeg_of_card_size(photo_bytes):
@@ -209,6 +304,13 @@ def test_compose_end_to_end_produces_a_jpeg_of_card_size(photo_bytes):
     img = Image.open(io.BytesIO(out))
     assert img.format == "JPEG"
     assert img.size == (1080, 1260)
+
+    with Image.open(placement.template_path) as template:
+        clean = template.convert("RGB")
+    tb = placement.text_box
+    out_crop = img.convert("RGB").crop((tb.x, tb.y, tb.right, tb.bottom))
+    clean_crop = clean.crop((tb.x, tb.y, tb.right, tb.bottom))
+    assert ImageChops.difference(out_crop, clean_crop).getbbox() is not None
 
 
 def test_compose_pastes_cutout_inside_photo_box(photo_bytes):

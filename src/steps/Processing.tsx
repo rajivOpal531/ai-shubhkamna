@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { compositePhoto } from '../services/composite';
+import { compositePhoto, CompositeError } from '../services/composite';
 import type { CompositeResult, Profile, Template } from '../types';
 import './Processing.css';
 
@@ -12,43 +12,68 @@ type Props = {
   onError: () => void;
 };
 
+function errorMessage(failure: CompositeError): string {
+  switch (failure.status) {
+    case 422:
+      return "We couldn't find a person in that photo. Please try a clearer photo with just you in the frame.";
+    case 413:
+      return 'That photo is too large. Please choose a smaller one.';
+    case 415:
+      return "We couldn't read that photo. Please choose a JPEG or PNG.";
+    default:
+      return 'Something went wrong while creating your card.';
+  }
+}
+
 export function Processing({ jwt, photo, template, profile, onComposited, onError }: Props) {
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<CompositeError | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const latest = useRef({ profile, onComposited });
-  latest.current = { profile, onComposited };
+  const latest = useRef({ profile, onComposited, jwt });
+  latest.current = { profile, onComposited, jwt };
 
   useEffect(() => {
     let cancelled = false;
-    setFailed(false);
+    setFailure(null);
+    const controller = new AbortController();
 
     compositePhoto({
       photo,
       templateId: template.id,
       templateImageUrl: template.image,
       profile: latest.current.profile,
-      jwt,
+      jwt: latest.current.jwt,
+      signal: controller.signal,
     })
       .then((result) => {
         if (!cancelled) latest.current.onComposited(result);
       })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
+      .catch((error) => {
+        if (cancelled || controller.signal.aborted) return;
+        setFailure(error instanceof CompositeError ? error : new CompositeError(String(error), null, null));
       });
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attempt, photo, template.id, template.image, jwt]);
+  }, [attempt, photo, template.id, template.image]);
 
-  if (failed) {
+  useEffect(() => {
+    if (failure?.requestId) {
+      console.error('compositing failed', failure.status, failure.requestId);
+    }
+  }, [failure]);
+
+  if (failure) {
     return (
       <div className="processing processing--error">
-        <p>Something went wrong while creating your card.</p>
-        <button type="button" onClick={() => setAttempt((value) => value + 1)}>
-          Retry
-        </button>
+        <p>{errorMessage(failure)}</p>
+        {failure.retryable && (
+          <button type="button" onClick={() => setAttempt((value) => value + 1)}>
+            Retry
+          </button>
+        )}
         <button type="button" onClick={onError}>
           Retake photo
         </button>

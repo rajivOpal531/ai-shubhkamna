@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { compositePhoto } from './composite';
+import { compositePhoto, CompositeError } from './composite';
 import { config } from '../config';
 import type { Profile } from '../types';
+
+const hasAbortSignalTimeout = typeof AbortSignal.timeout === 'function';
 
 const PROFILE: Profile = {
   username: 'Rajiv Ranjan',
@@ -54,14 +56,84 @@ describe('compositePhoto', () => {
     expect(form.get('constituency')).toBe('Gautam Buddha Nagar');
     expect(form.get('state')).toBe('Uttar Pradesh');
     expect(form.get('photo')).toBeInstanceOf(Blob);
+    expect((form.get('photo') as File).name).toBe('photo.jpg');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+    if (hasAbortSignalTimeout) {
+      expect(init.signal).toBeDefined();
+    }
   });
 
-  it('throws when the compositing endpoint responds with a non-ok status', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 502 }));
-
-    await expect(compositePhoto(PARAMS, { useMock: false })).rejects.toThrow(
-      'Compositing failed with status 502',
+  it('throws a CompositeError with status and request id when the compositing endpoint responds with a non-ok status', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        headers: { get: (key: string) => (key === 'X-Request-Id' ? 'abc12345' : null) },
+      }),
     );
+
+    const error = await compositePhoto(PARAMS, { useMock: false }).catch((err) => err);
+    expect(error).toBeInstanceOf(CompositeError);
+    expect((error as CompositeError).status).toBe(502);
+    expect((error as CompositeError).requestId).toBe('abc12345');
+    expect((error as CompositeError).retryable).toBe(true);
+  });
+
+  it('marks 422 responses as not retryable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        headers: { get: () => null },
+      }),
+    );
+
+    const error = await compositePhoto(PARAMS, { useMock: false }).catch((err) => err);
+    expect(error).toBeInstanceOf(CompositeError);
+    expect((error as CompositeError).retryable).toBe(false);
+  });
+
+  it('rejects with a CompositeError when the response body has no imageUrl', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({}),
+      }),
+    );
+
+    const error = await compositePhoto(PARAMS, { useMock: false }).catch((err) => err);
+    expect(error).toBeInstanceOf(CompositeError);
+    expect((error as CompositeError).message).toContain('imageUrl');
+  });
+
+  it('wraps an aborted fetch into a retryable CompositeError with no status', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('aborted', 'AbortError')));
+
+    const error = await compositePhoto(PARAMS, { useMock: false }).catch((err) => err);
+    expect(error).toBeInstanceOf(CompositeError);
+    expect((error as CompositeError).status).toBeNull();
+    expect((error as CompositeError).retryable).toBe(true);
+  });
+
+  it('passes a supplied signal through to fetch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ imageUrl: 'https://example.com/x.jpg' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    await compositePhoto({ ...PARAMS, signal: controller.signal }, { useMock: false });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBe(controller.signal);
   });
 
   it('draws the photo at the expected offset and size on the mock canvas', async () => {

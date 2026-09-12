@@ -1,17 +1,36 @@
 import { config } from '../config';
 import type { CompositeResult, Profile } from '../types';
 
+export const COMPOSITE_TIMEOUT_MS = 60_000;
+
 type CompositeParams = {
   photo: Blob;
   templateId: string;
   templateImageUrl: string;
   profile: Profile;
   jwt: string;
+  signal?: AbortSignal;
 };
 
 type Options = {
   useMock?: boolean;
 };
+
+export class CompositeError extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null,
+    readonly requestId: string | null,
+  ) {
+    super(message);
+    this.name = 'CompositeError';
+  }
+
+  /** 413/415/422 mean the same photo will fail again; everything else is worth a retry. */
+  get retryable(): boolean {
+    return this.status === null || ![413, 415, 422].includes(this.status);
+  }
+}
 
 // Real endpoint: server/README.md ("API"). Multipart fields + bearer header; returns { imageUrl }.
 export async function compositePhoto(
@@ -21,7 +40,13 @@ export async function compositePhoto(
   return useMock ? mockCompositePhoto(params) : realCompositePhoto(params);
 }
 
-async function realCompositePhoto({ photo, templateId, profile, jwt }: CompositeParams): Promise<CompositeResult> {
+async function realCompositePhoto({
+  photo,
+  templateId,
+  profile,
+  jwt,
+  signal,
+}: CompositeParams): Promise<CompositeResult> {
   const form = new FormData();
   form.append('template', templateId);
   form.append('photo', photo, 'photo.jpg');
@@ -29,15 +54,37 @@ async function realCompositePhoto({ photo, templateId, profile, jwt }: Composite
   form.append('constituency', profile.constituency);
   form.append('state', profile.state);
 
-  const response = await fetch(config.compositeUrl, {
-    method: 'POST',
-    body: form,
-    headers: { Authorization: `Bearer ${jwt}` },
-  });
-  if (!response.ok) {
-    throw new Error(`Compositing failed with status ${response.status}`);
+  const effectiveSignal =
+    signal ?? (typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(COMPOSITE_TIMEOUT_MS) : undefined);
+
+  let response: Response;
+  try {
+    response = await fetch(config.compositeUrl, {
+      method: 'POST',
+      body: form,
+      headers: { Authorization: `Bearer ${jwt}` },
+      signal: effectiveSignal,
+    });
+  } catch {
+    throw new CompositeError('Compositing request failed or timed out', null, null);
   }
-  const data = (await response.json()) as { imageUrl: string };
+
+  if (!response.ok) {
+    throw new CompositeError(
+      `Compositing failed with status ${response.status}`,
+      response.status,
+      response.headers.get('X-Request-Id'),
+    );
+  }
+
+  const data = (await response.json()) as { imageUrl?: unknown };
+  if (typeof data.imageUrl !== 'string' || !data.imageUrl) {
+    throw new CompositeError(
+      'Compositing response had no imageUrl',
+      response.status,
+      response.headers.get('X-Request-Id'),
+    );
+  }
   return { imageUrl: data.imageUrl };
 }
 

@@ -178,11 +178,15 @@ with-vector set. Committed under `server/templates/clean/card-<n>.jpg`.
 
 ## Frontend changes
 
-- `types.ts`: `CompositeParams` gains `jwt: string`. `Profile` unchanged.
+- `composite.ts`: `CompositeParams` gains `jwt: string` and an optional `signal`; a typed
+  `CompositeError` carries the HTTP status and `X-Request-Id`; requests time out after 60 s.
+  `Profile` unchanged.
 - `composite.ts` real path: send `template`, `photo`, `name`, `constituency`, `state` as
   multipart; set `Authorization: Bearer <jwt>`; read `imageUrl`. Replace the "provisional
   contract" comment with a pointer to `server/README.md`. Mock path unchanged.
 - `Processing.tsx`: receives `jwt` as a prop from `App` (which already holds it) and passes it into `compositePhoto`.
+- `Processing.tsx`: aborts the in-flight request on Retake/unmount; hides Retry for 413/415/422
+  and shows a photo-specific message instead.
 - `.env.example`: `VITE_COMPOSITE_URL=https://<railway-app>.up.railway.app/composite`,
   `VITE_USE_MOCK_COMPOSITE=false`, with a comment that setting it back to `true` restores the
   local canvas mock.

@@ -3,9 +3,16 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const compositePhotoMock = vi.fn();
-vi.mock('../services/composite', () => ({ compositePhoto: (...args: unknown[]) => compositePhotoMock(...args) }));
+vi.mock('../services/composite', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/composite')>();
+  return {
+    ...actual,
+    compositePhoto: (...args: unknown[]) => compositePhotoMock(...args),
+  };
+});
 
 import { Processing } from './Processing';
+import { CompositeError } from '../services/composite';
 import type { Profile, Template } from '../types';
 
 const TEMPLATE: Template = { id: 'card-1', image: 'data:image/jpeg;base64,x' };
@@ -29,7 +36,7 @@ describe('Processing', () => {
   });
 
   it('shows a retry/retake option when compositing fails, and retry calls compositePhoto again', async () => {
-    compositePhotoMock.mockRejectedValue(new Error('network error'));
+    compositePhotoMock.mockRejectedValue(new CompositeError('boom', 500, null));
     render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);
 
     const retryButton = await screen.findByRole('button', { name: /retry/i });
@@ -40,12 +47,40 @@ describe('Processing', () => {
   });
 
   it('calls onError when Retake photo is clicked after a failure', async () => {
-    compositePhotoMock.mockRejectedValue(new Error('network error'));
+    compositePhotoMock.mockRejectedValue(new CompositeError('boom', 500, null));
     const onError = vi.fn();
     render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={onError} />);
 
     await userEvent.click(await screen.findByRole('button', { name: /retake photo/i }));
     expect(onError).toHaveBeenCalled();
+  });
+
+  it('shows the no-person message with no Retry button for a 422 failure', async () => {
+    compositePhotoMock.mockRejectedValue(new CompositeError('no subject', 422, 'req1'));
+    render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);
+
+    expect(
+      await screen.findByText(/couldn't find a person in that photo/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /retake photo/i })).toBeInTheDocument();
+  });
+
+  it('aborts the in-flight request on unmount', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    compositePhotoMock.mockImplementation(
+      ({ signal }: { signal?: AbortSignal }) =>
+        new Promise(() => {
+          capturedSignal = signal;
+        }),
+    );
+    const { unmount } = render(
+      <Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />,
+    );
+
+    await waitFor(() => expect(capturedSignal).toBeDefined());
+    unmount();
+    expect(capturedSignal?.aborted).toBe(true);
   });
 
   it('does not re-run compositing when only profile/onComposited identity changes', async () => {

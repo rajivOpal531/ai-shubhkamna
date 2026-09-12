@@ -76,14 +76,15 @@ Errors (JSON body `{ "detail": "..." }`):
 
 | Status | When |
 |---|---|
-| 400 | unknown template id, missing `photo` |
+| 400 | unknown template id |
+| 422 | missing `photo`/`template` (FastAPI request validation), field longer than 120 chars, or no subject found |
 | 401 | missing/empty Authorization header, or `JWT_VALIDATE_URL` set and returned non-200 |
+| 503 | token-validation endpoint unreachable/timed out (fail closed, but retryable), service still starting, or more than 4× `MAX_CONCURRENT_COMPOSITES` requests already queued |
 | 413 | body larger than 10 MB |
 | 415 | unsupported or undecodable image |
-| 422 | background removal found no subject in the photo |
 | 429 | per-IP rate limit exceeded |
 | 502 | S3 upload failed |
-| 500 | anything else (logged with a request id) |
+| 500 | anything else; the detail and the `X-Request-Id` response header carry the request id that appears in the server log |
 
 ### `GET /health`
 
@@ -153,12 +154,19 @@ with-vector set. Committed under `server/templates/clean/card-<n>.jpg`.
 ## Security and limits
 
 - **CORS**: `ALLOWED_ORIGINS` (comma-separated). Only these origins pass preflight. No wildcard.
-- **Rate limit**: `slowapi`, key = client IP (respecting `X-Forwarded-For` behind Railway's
-  proxy), default `RATE_LIMIT_PER_MINUTE=10`.
+- **Rate limit**: `slowapi`, keyed by a hash of the bearer token when present (the thing we want to
+  budget, and immune to spoofed `X-Forwarded-For`), falling back to client IP. Default
+  `RATE_LIMIT_PER_MINUTE=10`. Counters are in-memory per process; set `RATE_LIMIT_STORAGE_URI`
+  (for example a Redis URL) before running more than one replica.
 - **JWT**: required header. Not decoded. A 12-char SHA-256 prefix of the token is logged per
   request. If `JWT_VALIDATE_URL` is set, the service performs `GET JWT_VALIDATE_URL` with the same
-  bearer before processing and rejects with 401 on any non-200 (5 s timeout → 401 as well).
-- **Body limit**: 10 MB, enforced before reading the file into memory.
+  bearer before processing and rejects with 401 on any non-200. A network error or the 5 s timeout
+  is a 503 (fail closed, but a webview treats 401 as "logged out", so an auth-service blip must
+  not sign users out). A malformed `JWT_VALIDATE_URL` fails at startup.
+- **Body limit**: 10 MB (+64 KB multipart overhead), enforced by a pure-ASGI middleware that
+  checks `Content-Length` and counts streamed body bytes before routing, because FastAPI spools
+  multipart uploads before any endpoint code runs. The route re-checks the file size as a
+  belt-and-braces.
 - **Secrets**: only via environment. `server/.env.example` lists names with empty values. No AWS
   keys, no JWT decode logic in the repo (carried over from the base spec).
 - **S3 objects**: key `<S3_PREFIX>/<uuid4>.jpg`, `ContentType: image/jpeg`. Public readability
@@ -200,6 +208,8 @@ results to `createPostByImageUrl`.
 | `ALLOWED_ORIGINS` | yes | `https://shubhkamnauat.narendramodi.in` |
 | `RATE_LIMIT_PER_MINUTE` | no | `10` (default) |
 | `JWT_VALIDATE_URL` | no | empty = skip validation |
+| `MAX_CONCURRENT_COMPOSITES` | no | `2` (default) |
+| `RATE_LIMIT_STORAGE_URI` | no | empty = in-memory; Redis URL for multi-replica |
 
 Memory: rembg with ISNet needs roughly 1 GB RSS; the Railway service should be sized at 2 GB.
 

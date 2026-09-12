@@ -1982,6 +1982,8 @@ git commit -m "docs(server): record Railway deployment URL"
 
 ## Self-review
 
+**Review-driven additions (2026-09-13, Task 7 round):** rate limit keyed by bearer hash with IP fallback and optional `RATE_LIMIT_STORAGE_URI`; body limit moved into `app/body_limit.py` (ASGI middleware, runs before auth and before FastAPI spools multipart); token-validator outages return 503 and the validate URL is checked at startup; load shedding at 4× the concurrency cap; catch-all 500 logged with a request id that is also returned in `X-Request-Id`; spec error table amended accordingly.
+
 **Review-driven additions (2026-09-13):** Task 3 tests the bundled font; Task 7 caps form fields at 120 chars and limits concurrent compositing with an `anyio.CapacityLimiter` (`MAX_CONCURRENT_COMPOSITES`, default 2); Task 8's Dockerfile installs libraqm and asserts Pillow sees it, because Poppins carries Devanagari but correct shaping needs HarfBuzz. Whether Indian-script names are in scope for launch is an open product question raised to the user.
 
 **Spec coverage**

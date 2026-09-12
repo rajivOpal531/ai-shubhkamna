@@ -185,7 +185,7 @@ results to `createPostByImageUrl`.
 - New service from this repo, **Root Directory** `server`, builder = Dockerfile.
 - Dockerfile: `python:3.11-slim`, install requirements, copy app + templates + fonts, run a
   one-line Python step that instantiates the `isnet-general-use` session so the model weights are
-  baked into the image, `CMD uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+  baked into the image, `CMD uvicorn app.main:create_app --factory --host 0.0.0.0 --port $PORT` (no module-level app; the factory keeps imports side-effect free).
 - Health check path `/health`.
 - Environment variables:
 

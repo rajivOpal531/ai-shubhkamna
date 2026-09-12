@@ -56,6 +56,10 @@ def uploader() -> MemoryUploader:
 
 @pytest.fixture
 def client(uploader):
-    app = create_app(settings=make_settings(rate_limit_per_minute=100), remover=fake_remover, uploader=uploader)
+    app = create_app(
+        settings=make_settings(rate_limit_per_minute=100, rate_limit_per_ip_per_minute=1000),
+        remover=fake_remover,
+        uploader=uploader,
+    )
     with TestClient(app) as test_client:
         yield test_client

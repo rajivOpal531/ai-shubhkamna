@@ -74,11 +74,23 @@ def rate_limit_key(request: Request) -> str:
     carries a per-source-IP limit (see create_app) that caps a caller minting fresh tokens.
     A 429 from either limit -- and the middleware's own 413 -- carries no X-Request-Id, because
     both answer before the route runs and no request id has been minted yet.
+
+    slowapi passes the request only if this parameter is literally named `request`.
     """
     token = _bearer(request.headers.get("authorization", ""))
     if token:
         return "jwt:" + hashlib.sha256(token.encode()).hexdigest()[:32]
-    return get_remote_address(request)
+    return "ip:" + get_remote_address(request)
+
+
+def client_ip_key(request: Request) -> str:
+    """Per-source-IP bucket. Uses the RIGHTMOST X-Forwarded-For entry (appended by the trusted
+    platform proxy, unlike the leftmost one which the client controls); falls back to the socket peer.
+    slowapi passes the request only if this parameter is literally named `request`."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return "ip:" + forwarded.rsplit(",", 1)[-1].strip()
+    return "ip:" + get_remote_address(request)
 
 
 async def _validate_request(
@@ -183,7 +195,7 @@ def create_app(
     # unvalidated token, so the per-IP bucket is the backstop against a caller rotating tokens.
     @app.post("/composite")
     @limiter.limit(f"{settings.rate_limit_per_minute}/minute")  # per bearer token (rate_limit_key)
-    @limiter.limit(f"{settings.rate_limit_per_ip_per_minute}/minute", key_func=get_remote_address)  # per source IP
+    @limiter.limit(f"{settings.rate_limit_per_ip_per_minute}/minute", key_func=client_ip_key)  # per source IP
     async def composite(
         request: Request,
         response: Response,

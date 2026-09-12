@@ -4,7 +4,7 @@ import anyio
 from fastapi.testclient import TestClient
 
 from app.body_limit import BodyLimitMiddleware
-from app.main import create_app
+from app.main import MULTIPART_OVERHEAD, create_app
 from app.storage import MemoryUploader
 from tests.conftest import fake_remover, make_photo_bytes, make_settings
 
@@ -170,4 +170,5 @@ def test_streamed_overflow_through_the_real_app_answers_413_once():
     assert len(starts) == 1, f"caller must see exactly one response, got {[m['type'] for m in sent]}"
     assert starts[0]["status"] == 413
     body = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
-    assert json.loads(body)["detail"] == "Body larger than 66536 bytes"
+    max_bytes = make_settings(max_upload_bytes=1000).max_upload_bytes + MULTIPART_OVERHEAD
+    assert json.loads(body)["detail"] == f"Body larger than {max_bytes} bytes"

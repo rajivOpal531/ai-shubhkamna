@@ -182,7 +182,7 @@ def test_photo_of_exactly_the_limit_is_not_413(client, monkeypatch):
     assert response.status_code == 200, response.text
 
 
-def test_rate_limit_is_keyed_by_bearer_not_ip(uploader):
+def test_rate_limit_buckets_per_bearer(uploader):
     # The per-IP ceiling is raised out of the way so only the per-bearer budget can fire.
     app = create_app(
         settings=make_settings(rate_limit_per_minute=1, rate_limit_per_ip_per_minute=100),
@@ -310,3 +310,35 @@ def test_per_ip_ceiling_applies_across_rotated_bearers(uploader):
             _post(client, headers={"Authorization": f"Bearer forged-{i}"}).status_code for i in range(3)
         ]
     assert codes == [200, 200, 429], "the third request from this IP must be shed regardless of token"
+
+
+def test_per_ip_ceiling_uses_rightmost_forwarded_for(uploader):
+    """The leftmost X-Forwarded-For hop is client-controlled; only the rightmost one (appended by
+    the trusted platform proxy) is safe to bucket on. A spoofed leftmost must not buy a fresh
+    per-IP budget, but a genuinely different rightmost hop must."""
+    app = create_app(
+        settings=make_settings(rate_limit_per_minute=100, rate_limit_per_ip_per_minute=2),
+        remover=fake_remover,
+        uploader=uploader,
+    )
+    with TestClient(app) as client:
+        codes = [
+            _post(
+                client,
+                headers={
+                    "Authorization": f"Bearer forged-{i}",
+                    "X-Forwarded-For": f"10.0.0.{i}, 203.0.113.9",
+                },
+            ).status_code
+            for i in range(3)
+        ]
+        assert codes == [200, 200, 429], "same rightmost hop must share one budget regardless of the spoofed leftmost"
+
+        other = _post(
+            client,
+            headers={
+                "Authorization": "Bearer forged-other",
+                "X-Forwarded-For": "1.1.1.1, 203.0.113.10",
+            },
+        )
+    assert other.status_code == 200, "a different rightmost hop gets its own budget"

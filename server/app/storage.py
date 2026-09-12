@@ -15,6 +15,7 @@ S3_CONFIG = Config(
     retries={"max_attempts": 3, "mode": "standard"},
 )
 PREFIX_PATTERN = re.compile(r"[A-Za-z0-9._\-/]*")
+BUCKET_PATTERN = re.compile(r"[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]")
 
 
 class UploadError(RuntimeError):
@@ -33,8 +34,8 @@ class S3ClientLike(Protocol):
 class S3Uploader:
     """Uploads JPEGs to S3 and returns a virtual-hosted-style public URL.
 
-    The bucket must live in `region`; S3 silently follows cross-region redirects on
-    PUT but the virtual-hosted URL returned here would then be wrong.
+    The bucket must live in `region`: cross-region PUTs may be redirected or rejected by
+    S3; either way the virtual-hosted URL returned here would be wrong.
     """
 
     def __init__(
@@ -47,8 +48,10 @@ class S3Uploader:
     ) -> None:
         if not bucket:
             raise ValueError("S3_BUCKET is not set")
-        if "." in bucket:
-            raise ValueError("S3_BUCKET must be DNS-compatible (no dots) for virtual-hosted URLs")
+        if not BUCKET_PATTERN.fullmatch(bucket):
+            raise ValueError(
+                "S3_BUCKET must be a DNS-compatible bucket name (lowercase letters, digits, hyphens)"
+            )
         if not region:
             raise ValueError("AWS_REGION is not set")
         if not PREFIX_PATTERN.fullmatch(prefix):

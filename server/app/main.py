@@ -4,19 +4,20 @@ from __future__ import annotations
 import hashlib
 import logging
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 import anyio
 import httpx
-from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from .body_limit import BodyLimitMiddleware
 from .config import Settings, load_settings
 from .pipeline import BadImageError, NoSubjectError, TextFields, compose
 from .placements import Placement, load_placements
@@ -28,6 +29,12 @@ log = logging.getLogger("ai-shubh")
 TokenValidator = Callable[[str], Awaitable[bool]]
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MULTIPART_OVERHEAD = 64 * 1024  # form fields, boundaries and part headers around the photo
+QUEUE_FACTOR = 4  # requests allowed to queue per composite slot before we shed load
+
+
+class TokenValidatorUnavailable(RuntimeError):
+    """The validation endpoint could not be reached. That is our problem, not the caller's."""
 
 
 @dataclass
@@ -36,18 +43,20 @@ class Runtime:
 
     remover: Remover | None = None
     uploader: Uploader | None = None
+    http: httpx.AsyncClient | None = None
 
 
-def make_token_validator(validate_url: str) -> TokenValidator:
-    """GET validate_url with the bearer; any non-200 or network problem counts as invalid."""
+def make_token_validator(validate_url: str, http_getter: Callable[[], httpx.AsyncClient]) -> TokenValidator:
+    """GET validate_url with the bearer. Non-200 means invalid; an unreachable endpoint raises
+    TokenValidatorUnavailable so the route can answer 503 instead of a bogus 401."""
 
     async def _validate(token: str) -> bool:
+        http = http_getter()
         try:
-            async with httpx.AsyncClient(timeout=5.0) as http:
-                response = await http.get(validate_url, headers={"Authorization": f"Bearer {token}"})
+            response = await http.get(validate_url, headers={"Authorization": f"Bearer {token}"})
         except httpx.HTTPError as exc:
             log.warning("token validation call failed: %s", exc)
-            return False
+            raise TokenValidatorUnavailable(str(exc)) from exc
         return response.status_code == 200
 
     return _validate
@@ -56,6 +65,37 @@ def make_token_validator(validate_url: str) -> TokenValidator:
 def _bearer(authorization: str) -> str:
     scheme, _, token = authorization.partition(" ")
     return token.strip() if scheme.lower() == "bearer" else ""
+
+
+def rate_limit_key(request: Request) -> str:
+    """Budget per bearer token (the thing we actually want to cap); fall back to the client IP."""
+    token = _bearer(request.headers.get("authorization", ""))
+    if token:
+        return "jwt:" + hashlib.sha256(token.encode()).hexdigest()[:32]
+    return get_remote_address(request)
+
+
+async def _validate_request(
+    photo: UploadFile,
+    template: str,
+    fields: TextFields,
+    settings: Settings,
+    placements: dict[str, Placement],
+) -> tuple[Placement, bytes]:
+    """Cheap guards before any real work: returns the placement and the photo bytes."""
+    placement = placements.get(template)
+    if placement is None:
+        raise HTTPException(status_code=400, detail=f"Unknown template '{template[:32]}'")
+    if photo.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=415, detail="Unsupported image type")
+    # Belt and braces: BodyLimitMiddleware already capped the whole body further upstream.
+    data = await photo.read(settings.max_upload_bytes + 1)
+    if len(data) > settings.max_upload_bytes:
+        megabytes = settings.max_upload_bytes // (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"Photo larger than {megabytes} MB")
+    if any(len(v) > settings.max_field_chars for v in (fields.name, fields.constituency, fields.state)):
+        raise HTTPException(status_code=422, detail="Field too long")
+    return placement, data
 
 
 def create_app(
@@ -69,8 +109,19 @@ def create_app(
     settings = settings if settings is not None else load_settings()
     placements = placements if placements is not None else load_placements()
     runtime = Runtime(remover=remover, uploader=uploader)
+
+    if settings.jwt_validate_url:
+        parsed = httpx.URL(settings.jwt_validate_url)
+        if parsed.scheme not in ("http", "https") or not parsed.host:
+            raise ValueError("JWT_VALIDATE_URL is not a valid http(s) URL")
+
+    def http_client() -> httpx.AsyncClient:
+        if runtime.http is None:
+            raise TokenValidatorUnavailable("HTTP client not started")
+        return runtime.http
+
     if token_validator is None and settings.jwt_validate_url:
-        token_validator = make_token_validator(settings.jwt_validate_url)
+        token_validator = make_token_validator(settings.jwt_validate_url, http_client)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -84,16 +135,26 @@ def create_app(
                 prefix=settings.s3_prefix,
                 public_read_acl=settings.s3_public_read_acl,
             )
-        yield
+        async with AsyncExitStack() as stack:
+            # One client per process, and only when something actually validates tokens:
+            # building it loads the system trust store, which is slow and pointless otherwise.
+            if settings.jwt_validate_url:
+                runtime.http = await stack.enter_async_context(httpx.AsyncClient(timeout=5.0))
+            try:
+                yield
+            finally:
+                runtime.http = None
 
     app = FastAPI(title="AI Shubhkamna compositing", lifespan=lifespan)
     composite_limiter = anyio.CapacityLimiter(settings.max_concurrent_composites)
     app.state.composite_limiter = composite_limiter
 
-    limiter = Limiter(key_func=get_remote_address)
+    limiter = Limiter(key_func=rate_limit_key, storage_uri=settings.rate_limit_storage_uri or "memory://")
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+    # Added first so CORS ends up outermost and can decorate the middleware's own 413.
+    app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_upload_bytes + MULTIPART_OVERHEAD)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins,
@@ -113,6 +174,7 @@ def create_app(
     @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
     async def composite(
         request: Request,
+        response: Response,
         photo: UploadFile = File(...),
         template: str = Form(...),
         name: str = Form(""),
@@ -120,29 +182,25 @@ def create_app(
         state: str = Form(""),
         authorization: str = Header(""),
     ) -> dict[str, str]:
+        request_id = uuid.uuid4().hex[:8]
+        rid = {"X-Request-Id": request_id}
+
         token = _bearer(authorization)
         if not token:
-            raise HTTPException(status_code=401, detail="Missing bearer token")
-        if token_validator is not None and not await token_validator(token):
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(status_code=401, detail="Missing bearer token", headers=rid)
+        if token_validator is not None:
+            try:
+                accepted = await token_validator(token)
+            except TokenValidatorUnavailable as exc:
+                raise HTTPException(503, "Token check unavailable, retry shortly", headers=rid) from exc
+            if not accepted:
+                raise HTTPException(status_code=401, detail="Invalid token", headers=rid)
 
-        placement = placements.get(template)
-        if placement is None:
-            raise HTTPException(status_code=400, detail=f"Unknown template '{template}'")
-        if photo.content_type not in ALLOWED_CONTENT_TYPES:
-            raise HTTPException(status_code=415, detail="Unsupported image type")
+        fields = TextFields(name=name, constituency=constituency, state=state)
+        placement, data = await _validate_request(photo, template, fields, settings, placements)
+        if runtime.remover is None or runtime.uploader is None:
+            raise HTTPException(status_code=503, detail="Service starting", headers=rid)
 
-        declared = request.headers.get("content-length")
-        if declared and declared.isdigit() and int(declared) > settings.max_upload_bytes + 64 * 1024:
-            raise HTTPException(status_code=413, detail="Photo larger than 10 MB")
-        data = await photo.read(settings.max_upload_bytes + 1)
-        if len(data) > settings.max_upload_bytes:
-            raise HTTPException(status_code=413, detail="Photo larger than 10 MB")
-        if any(len(value) > settings.max_field_chars for value in (name, constituency, state)):
-            raise HTTPException(status_code=422, detail="Field too long")
-
-        assert runtime.remover is not None and runtime.uploader is not None  # set in lifespan
-        request_id = uuid.uuid4().hex[:8]
         log.info(
             "composite req=%s template=%s jwt=%s bytes=%d",
             request_id,
@@ -150,23 +208,27 @@ def create_app(
             hashlib.sha256(token.encode()).hexdigest()[:12],
             len(data),
         )
+        if composite_limiter.statistics().tasks_waiting >= settings.max_concurrent_composites * QUEUE_FACTOR:
+            raise HTTPException(status_code=503, detail="Busy, retry shortly", headers=rid)
 
         try:
             async with composite_limiter:
-                jpeg = await run_in_threadpool(
-                    compose, data, placement, TextFields(name=name, constituency=constituency, state=state), runtime.remover
-                )
-        except BadImageError as exc:
-            raise HTTPException(status_code=415, detail=str(exc)) from exc
-        except NoSubjectError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-        try:
+                jpeg = await run_in_threadpool(compose, data, placement, fields, runtime.remover)
             url = await run_in_threadpool(runtime.uploader.upload_jpeg, jpeg)
+        except BadImageError as exc:
+            raise HTTPException(status_code=415, detail=str(exc), headers=rid) from exc
+        except NoSubjectError as exc:
+            raise HTTPException(status_code=422, detail=str(exc), headers=rid) from exc
         except UploadError as exc:
             log.error("composite req=%s upload failed: %s", request_id, exc)
-            raise HTTPException(status_code=502, detail="Upload failed") from exc
+            raise HTTPException(status_code=502, detail="Upload failed", headers=rid) from exc
+        except HTTPException:
+            raise
+        except Exception:
+            log.exception("composite req=%s failed", request_id)
+            raise HTTPException(500, f"Internal error (req {request_id})", headers=rid) from None
 
+        response.headers["X-Request-Id"] = request_id
         return {"imageUrl": url}
 
     return app

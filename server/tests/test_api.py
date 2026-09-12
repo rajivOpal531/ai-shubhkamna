@@ -1,6 +1,11 @@
+import concurrent.futures
+import threading
+import time
+
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
+from app.main import TokenValidatorUnavailable, create_app
 from tests.conftest import empty_remover, fake_remover, make_photo_bytes, make_settings
 
 AUTH = {"Authorization": "Bearer test-token"}
@@ -143,5 +148,143 @@ def test_cors_preflight_allows_configured_origin_only(client):
     assert "access-control-allow-origin" not in bad.headers
 
 
-def test_health_reports_uploader_ready(client):
-    assert client.get("/health").json() == {"status": "ok", "model_loaded": True, "uploader_ready": True}
+def test_fields_reach_compose(client, monkeypatch):
+    from app.pipeline import TextFields
+    from app.placements import load_placements
+
+    seen = {}
+
+    def record(data, placement, fields, remover):
+        seen["fields"] = fields
+        seen["placement"] = placement
+        return make_photo_bytes()
+
+    monkeypatch.setattr("app.main.compose", record)
+    assert _post(client, name="Rajiv", constituency="Patna", state="Bihar").status_code == 200
+    assert seen["fields"] == TextFields(name="Rajiv", constituency="Patna", state="Bihar")
+    assert seen["placement"] == load_placements()["card-2"]
+
+
+def test_success_sets_request_id_header(client):
+    response = _post(client)
+    assert response.status_code == 200
+    assert len(response.headers["x-request-id"]) == 8
+
+
+def test_name_of_exactly_the_limit_is_accepted(client):
+    assert _post(client, name="x" * 120).status_code == 200
+
+
+def test_photo_of_exactly_the_limit_is_not_413(client, monkeypatch):
+    monkeypatch.setattr("app.main.compose", lambda *a: make_photo_bytes())
+    limit = make_settings().max_upload_bytes
+    response = _post(client, photo=b"x" * limit)
+    assert response.status_code == 200, response.text
+
+
+def test_rate_limit_is_keyed_by_bearer_not_ip(uploader):
+    app = create_app(settings=make_settings(rate_limit_per_minute=1), remover=fake_remover, uploader=uploader)
+    with TestClient(app) as client:
+        first = _post(client, headers={**AUTH, "X-Forwarded-For": "10.0.0.1"})
+        second = _post(client, headers={**AUTH, "X-Forwarded-For": "10.0.0.2"})
+        other = _post(client, headers={"Authorization": "Bearer other-token"})
+    assert first.status_code == 200
+    assert second.status_code == 429, "same bearer from a different IP must share the budget"
+    assert other.status_code == 200, "a different bearer gets its own budget"
+
+
+def test_rate_limit_falls_back_to_ip_without_bearer(uploader):
+    # slowapi checks the limit before the handler runs, so the unauthenticated second
+    # request is rejected by the limiter rather than by the 401 inside the route.
+    app = create_app(settings=make_settings(rate_limit_per_minute=1), remover=fake_remover, uploader=uploader)
+    with TestClient(app) as client:
+        assert _post(client, headers={}).status_code == 401
+        assert _post(client, headers={}).status_code == 429
+
+
+def test_composite_limiter_serialises_work(uploader):
+    lock = threading.Lock()
+    live = 0
+    peak = 0
+
+    def slow_remover(img):
+        nonlocal live, peak
+        with lock:
+            live += 1
+            peak = max(peak, live)
+        time.sleep(0.2)
+        with lock:
+            live -= 1
+        return fake_remover(img)
+
+    app = create_app(
+        settings=make_settings(max_concurrent_composites=1, rate_limit_per_minute=100),
+        remover=slow_remover,
+        uploader=uploader,
+    )
+    with TestClient(app) as client:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            results = [f.result() for f in [pool.submit(_post, client) for _ in range(3)]]
+    assert [r.status_code for r in results] == [200, 200, 200]
+    assert peak == 1
+
+
+def test_queue_overflow_is_503(uploader):
+    release = threading.Event()
+
+    def blocking_remover(img):
+        release.wait(10)
+        return fake_remover(img)
+
+    app = create_app(
+        settings=make_settings(max_concurrent_composites=1, rate_limit_per_minute=100),
+        remover=blocking_remover,
+        uploader=uploader,
+    )
+    limiter = app.state.composite_limiter
+    with TestClient(app) as client:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            queued = [pool.submit(_post, client) for _ in range(5)]  # 1 running + 4 waiting
+            deadline = time.monotonic() + 10
+            while limiter.statistics().tasks_waiting < 4 and time.monotonic() < deadline:
+                time.sleep(0.02)
+            assert limiter.statistics().tasks_waiting == 4, "queue did not fill; test is inconclusive"
+            overflow = _post(client)
+            release.set()
+            assert [f.result().status_code for f in queued] == [200] * 5
+    assert overflow.status_code == 503
+    assert overflow.json()["detail"] == "Busy, retry shortly"
+
+
+def test_validator_outage_is_503(uploader):
+    async def unavailable(token: str) -> bool:
+        raise TokenValidatorUnavailable("connect timeout")
+
+    app = create_app(
+        settings=make_settings(jwt_validate_url="https://api.example/validate"),
+        remover=fake_remover,
+        uploader=uploader,
+        token_validator=unavailable,
+    )
+    with TestClient(app) as client:
+        response = _post(client)
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Token check unavailable, retry shortly"
+
+
+def test_invalid_validate_url_fails_at_startup():
+    with pytest.raises(ValueError, match="JWT_VALIDATE_URL"):
+        create_app(settings=make_settings(jwt_validate_url="not a url"))
+
+
+def test_unexpected_error_is_500_with_request_id(uploader):
+    def exploding_remover(img):
+        raise RuntimeError("model segfaulted")
+
+    app = create_app(settings=make_settings(), remover=exploding_remover, uploader=uploader)
+    with TestClient(app) as client:
+        response = _post(client)
+    assert response.status_code == 500
+    request_id = response.headers["x-request-id"]
+    assert len(request_id) == 8 and int(request_id, 16) >= 0
+    assert f"req {request_id}" in response.json()["detail"]

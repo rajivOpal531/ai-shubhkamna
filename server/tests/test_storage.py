@@ -56,6 +56,8 @@ def test_s3_uploader_wraps_client_errors(error):
     [
         ("", "ap-south-1", "ai-shubh", "S3_BUCKET"),
         ("cards.prod", "ap-south-1", "ai-shubh", "DNS-compatible"),
+        ("MyBucket", "ap-south-1", "ai-shubh", "DNS-compatible"),
+        ("a_b", "ap-south-1", "ai-shubh", "DNS-compatible"),
         ("cards", "", "ai-shubh", "AWS_REGION"),
         ("cards", "ap-south-1", "bad prefix", "S3_PREFIX"),
     ],
@@ -79,6 +81,7 @@ def test_s3_uploader_builds_default_client_with_timeouts(monkeypatch):
     assert recorded["region_name"] == "ap-south-1"
     assert recorded["config"].connect_timeout == 5
     assert recorded["config"].read_timeout == 30
+    assert recorded["config"].retries == {"max_attempts": 3, "mode": "standard"}
 
 
 def test_memory_uploader_stores_bytes_and_returns_unique_urls():

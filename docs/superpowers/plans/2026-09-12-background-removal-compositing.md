@@ -213,6 +213,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     )
 ```
 
+(Task 7 later adds `max_concurrent_composites: int` read from `MAX_CONCURRENT_COMPOSITES`, default 2, and `max_field_chars: int = 120`.)
+
 - [ ] **Step 6: Run config tests**
 
 Run: `pytest tests/test_config.py -v`
@@ -595,11 +597,24 @@ python -c "from PIL import ImageFont; f=ImageFont.truetype('app/fonts/Poppins-Se
 ```
 Expected: `('Poppins', 'SemiBold')`
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Add a test that the real font is used**
+
+Append to `server/tests/test_pipeline.py`:
+```python
+from app.pipeline import FONT_PATH, _load_font
+
+
+def test_bundled_font_is_present_and_loads_as_poppins():
+    assert FONT_PATH.is_file(), FONT_PATH
+    assert _load_font(FONT_PATH, 24).getname() == ("Poppins", "SemiBold")
+```
+Run: `pytest tests/test_pipeline.py -v` → passes. (Without the file this test fails, so a typo in `FONT_PATH` can no longer silently fall back to the default font.)
+
+- [ ] **Step 4: Commit**
 
 ```bash
 cd /d/ai-shubhkamna
-git add server/app/fonts
+git add server/app/fonts server/tests/test_pipeline.py
 git commit -m "chore(server): bundle Poppins SemiBold (OFL) for the name line"
 ```
 
@@ -1154,9 +1169,23 @@ git commit -m "feat(server): S3 uploader with in-memory test double"
 ### Task 7: `POST /composite` endpoint with guards
 
 **Files:**
-- Modify: `server/app/main.py`
+- Modify: `server/app/main.py`, `server/app/config.py`, `server/.env.example`
 - Create: `server/tests/test_api.py`
-- Modify: `server/tests/conftest.py`
+- Modify: `server/tests/conftest.py`, `server/tests/test_config.py`
+
+**Step 0: Settings additions (from the Task 5 review).** In `server/app/config.py` add two fields to `Settings` and `load_settings`:
+```python
+    max_concurrent_composites: int   # = int(env.get("MAX_CONCURRENT_COMPOSITES", "2"))
+    max_field_chars: int             # = 120 (not env-driven)
+```
+Add to `server/.env.example`:
+```
+# How many background-removal jobs may run at once. ISNet needs ~1 GB RSS each; keep this small.
+MAX_CONCURRENT_COMPOSITES=2
+```
+Extend `tests/test_config.py`: defaults give `max_concurrent_composites == 2` and `max_field_chars == 120`; `MAX_CONCURRENT_COMPOSITES=5` parses to 5. `make_settings` in conftest picks these up automatically.
+
+In the route (Step 4 below): reject any of `name`/`constituency`/`state` longer than `settings.max_field_chars` with `HTTPException(422, "Field too long")`, and wrap the `compose` call in a process-wide `anyio.CapacityLimiter(settings.max_concurrent_composites)` created in `create_app` and stored on `app.state.composite_limiter`. Add tests: a 121-char `name` → 422; `app.state.composite_limiter.total_tokens == settings.max_concurrent_composites`.
 
 - [ ] **Step 1: Add an app fixture to conftest**
 
@@ -1337,6 +1366,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
+import anyio
 import httpx
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -1415,6 +1445,8 @@ def create_app(
         yield
 
     app = FastAPI(title="AI Shubhkamna compositing", lifespan=lifespan)
+    composite_limiter = anyio.CapacityLimiter(settings.max_concurrent_composites)
+    app.state.composite_limiter = composite_limiter
 
     limiter = Limiter(key_func=get_remote_address)
     app.state.limiter = limiter
@@ -1464,6 +1496,8 @@ def create_app(
         data = await photo.read(settings.max_upload_bytes + 1)
         if len(data) > settings.max_upload_bytes:
             raise HTTPException(status_code=413, detail="Photo larger than 10 MB")
+        if any(len(value) > settings.max_field_chars for value in (name, constituency, state)):
+            raise HTTPException(status_code=422, detail="Field too long")
 
         assert runtime.remover is not None and runtime.uploader is not None  # set in lifespan
         request_id = uuid.uuid4().hex[:8]
@@ -1476,9 +1510,10 @@ def create_app(
         )
 
         try:
-            jpeg = await run_in_threadpool(
-                compose, data, placement, TextFields(name=name, constituency=constituency, state=state), runtime.remover
-            )
+            async with composite_limiter:
+                jpeg = await run_in_threadpool(
+                    compose, data, placement, TextFields(name=name, constituency=constituency, state=state), runtime.remover
+                )
         except BadImageError as exc:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
         except NoSubjectError as exc:
@@ -1527,8 +1562,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv
 
+# libraqm: HarfBuzz text shaping so Devanagari and other Indic scripts render with correct
+# conjuncts/matras in the name line. libgl1/libglib2.0-0: onnxruntime/opencv deps for rembg.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+ && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libraqm0 libfribidi0 libharfbuzz0b \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -1536,6 +1573,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Bake the model weights into the image so a cold container never downloads at request time.
 RUN python -c "from rembg import new_session; new_session('isnet-general-use')"
+
+# Fail the build if Pillow cannot see libraqm (text shaping for Indic scripts would silently break).
+RUN python -c "from PIL import features; assert features.check('raqm'), 'libraqm not available to Pillow'"
 
 COPY app ./app
 COPY templates ./templates
@@ -1941,6 +1981,8 @@ git commit -m "docs(server): record Railway deployment URL"
 ---
 
 ## Self-review
+
+**Review-driven additions (2026-09-13):** Task 3 tests the bundled font; Task 7 caps form fields at 120 chars and limits concurrent compositing with an `anyio.CapacityLimiter` (`MAX_CONCURRENT_COMPOSITES`, default 2); Task 8's Dockerfile installs libraqm and asserts Pillow sees it, because Poppins carries Devanagari but correct shaping needs HarfBuzz. Whether Indian-script names are in scope for launch is an open product question raised to the user.
 
 **Spec coverage**
 - API shape, fields, header, response, error table → Task 7 (400/401/413/415/422/429/502; 500 falls through FastAPI's default handler).

@@ -23,6 +23,11 @@ function errorMessage(failure: CompositeError): string {
       return 'That photo is too large. Please choose a smaller one.';
     case 415:
       return "We couldn't read that photo. Please choose a JPEG or PNG.";
+    case 401:
+      return 'Your session has expired. Please go back to the app and open this page again.';
+    case 429:
+    case 503:
+      return 'The service is busy right now. Please wait a moment and try again.';
     default:
       return 'Something went wrong while creating your card.';
   }

@@ -66,6 +66,27 @@ describe('Processing', () => {
     expect(screen.getByRole('button', { name: /retake photo/i })).toBeInTheDocument();
   });
 
+  it('shows the session-expired message with no Retry button for a 401 failure', async () => {
+    compositePhotoMock.mockRejectedValue(new CompositeError('unauthorized', 401, 'req2'));
+    render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);
+
+    expect(
+      await screen.findByText(/session has expired/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /retake photo/i })).toBeInTheDocument();
+  });
+
+  it('shows the busy message with a Retry button for a 503 failure', async () => {
+    compositePhotoMock.mockRejectedValue(new CompositeError('unavailable', 503, 'req3'));
+    render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);
+
+    expect(
+      await screen.findByText(/service is busy right now/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
   it('shows the config message with no Retry button for a config failure', async () => {
     compositePhotoMock.mockRejectedValue(new CompositeError('cfg', null, null, 'config'));
     render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);

@@ -105,6 +105,21 @@ describe('compositePhoto', () => {
     expect((error as CompositeError).retryable).toBe(false);
   });
 
+  it('marks 400 responses as not retryable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        headers: { get: () => null },
+      }),
+    );
+
+    const error = await compositePhoto(PARAMS, { useMock: false }).catch((err) => err);
+    expect(error).toBeInstanceOf(CompositeError);
+    expect((error as CompositeError).retryable).toBe(false);
+  });
+
   it('rejects with a CompositeError when the response body has no imageUrl', async () => {
     vi.stubGlobal(
       'fetch',

@@ -31,12 +31,13 @@ export class CompositeError extends Error {
   }
 
   /**
-   * A misconfiguration will fail again on retry, as will 413/415/422 (the same photo will
-   * fail again); everything else is worth a retry.
+   * A misconfiguration will fail again on retry, as will 400/401/413/415/422 (an unknown
+   * template, an expired/invalid token, or the same photo, will fail identically); everything
+   * else is worth a retry.
    */
   get retryable(): boolean {
     if (this.kind === 'config') return false;
-    return this.status === null || ![413, 415, 422].includes(this.status);
+    return this.status === null || ![400, 401, 413, 415, 422].includes(this.status);
   }
 }
 

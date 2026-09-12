@@ -38,7 +38,7 @@ server/
     pipeline.py        # decode -> remove bg -> fit -> paste -> text -> encode
     placements.py      # loads placements.json, typed accessors
     storage.py         # S3 uploader (+ in-memory stub for tests)
-    fonts/Outfit-*.ttf # bundled OFL font (or the design team's font if supplied)
+    fonts/Poppins-SemiBold.ttf # bundled OFL font (or the design team's font if supplied)
   templates/
     clean/card-<n>.jpg # without-vector set, same ids as src/data/templates.ts
     placements.json    # hand-measured, committed
@@ -82,13 +82,13 @@ Errors (JSON body `{ "detail": "..." }`):
 | 503 | token-validation endpoint unreachable/timed out (fail closed, but retryable), service still starting, or more than 4× `MAX_CONCURRENT_COMPOSITES` requests already queued |
 | 413 | body larger than 10 MB |
 | 415 | unsupported or undecodable image |
-| 429 | per-IP rate limit exceeded |
+| 429 | rate limit exceeded (per bearer token, or per source IP across tokens) |
 | 502 | S3 upload failed |
 | 500 | anything else; the detail and the `X-Request-Id` response header carry the request id that appears in the server log |
 
 ### `GET /health`
 
-`{ "status": "ok", "model_loaded": true }`. Used by Railway's health check.
+`{ "status": "ok", "model_loaded": true, "uploader_ready": true }`. Used by Railway's health check.
 
 ## Pipeline (`pipeline.py`)
 
@@ -107,8 +107,7 @@ Runs in order, all in memory, no temp files:
    bundled font at `font_size`:
    - line 1: `-{name}` (only if `name` non-blank)
    - line 2: `{constituency}, {state}` — whichever parts are non-blank, joined with ", "
-   Lines are left-aligned to the box, top-anchored, line height = 1.25 × font size. Text longer
-   than the box width is truncated with "…". If both lines are blank the box is still filled, so
+   Lines are left-aligned to the box, top-anchored, or right-aligned when the placement's `align` is `right` (card-15), line height = 1.25 × font size. Text wider than the box is first shrunk to a common size no smaller than 70 % of `font_size`; anything still wider is truncated with "…". If both lines are blank the box is still filled, so
    the placeholder never leaks through.
 7. **Encode** JPEG, quality 90, and hand the bytes to storage.
 
@@ -124,7 +123,8 @@ Illustrative values only; real numbers come from the script and hand measurement
     "photo_box":  { "x": 640, "y": 530, "w": 380, "h": 730 },
     "text_box":   { "x": 115, "y": 1080, "w": 470, "h": 80 },
     "text_color":  "#FFFFFF",
-    "font_size":   28
+    "font_size":   28,
+    "align":       "left"
   }
 }
 ```
@@ -166,7 +166,7 @@ with-vector set. Committed under `server/templates/clean/card-<n>.jpg`.
   request. If `JWT_VALIDATE_URL` is set, the service performs `GET JWT_VALIDATE_URL` with the same
   bearer before processing and rejects with 401 on any non-200. A network error or the 5 s timeout
   is a 503 (fail closed, but a webview treats 401 as "logged out", so an auth-service blip must
-  not sign users out). A malformed `JWT_VALIDATE_URL` fails at startup.
+  not sign users out). A malformed `JWT_VALIDATE_URL` fails at startup. A `401` in the frontend is treated as a dead session (no Retry).
 - **Body limit**: 10 MB (+64 KB multipart overhead), enforced by a pure-ASGI middleware that
   checks `Content-Length` and counts streamed body bytes before routing, because FastAPI spools
   multipart uploads before any endpoint code runs. The route re-checks the file size as a
@@ -219,6 +219,7 @@ results to `createPostByImageUrl`.
 | `JWT_VALIDATE_URL` | no | empty = skip validation |
 | `MAX_CONCURRENT_COMPOSITES` | no | `2` (default) |
 | `RATE_LIMIT_STORAGE_URI` | no | empty = in-memory; Redis URL for multi-replica |
+| `REMBG_MODEL` | no | `isnet-general-use` (default) |
 
 Memory: rembg with ISNet needs roughly 1 GB RSS; the Railway service should be sized at 2 GB.
 
@@ -233,7 +234,7 @@ All backend tests run without AWS or the real model:
   covered.
 - `tests/test_api.py`: TestClient with a stub uploader; happy path returns `imageUrl`; 401 on
   missing JWT; 400 bad template; 413 oversize; 415 non-image; 429 after limit.
-- `tests/test_templates_match_frontend.py`: ids in `placements.json` == ids in
+- `tests/test_placements.py`: ids in `placements.json` == ids in
   `src/data/templates.ts` == files in `templates/clean/`.
 
 Frontend: `composite.test.ts` gains a real-path case asserting form fields and the
@@ -251,6 +252,6 @@ UAT JWT: Landing → Upload → Preview shows the S3 image → Post → Media Wa
 
 ## Open items
 
-1. Brand font file from design; until provided, Outfit (OFL) is bundled.
+1. Brand font file from design; until provided, Poppins SemiBold (OFL) is bundled.
 
 Resolved: clean template files received 2026-09-12 and committed under `server/templates/clean/`.

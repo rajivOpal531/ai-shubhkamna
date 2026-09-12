@@ -12,7 +12,8 @@ from app.storage import MemoryUploader
 
 def make_settings(**overrides) -> Settings:
     """Defaults from load_settings(env={}) plus a test origin; override any field by keyword."""
-    return dataclasses.replace(load_settings(env={}), allowed_origins=["https://app.example"], **overrides)
+    fields = {"allowed_origins": ["https://app.example"], **overrides}
+    return dataclasses.replace(load_settings(env={}), **fields)
 
 
 def make_photo_bytes(width: int = 600, height: int = 800, fmt: str = "JPEG") -> bytes:

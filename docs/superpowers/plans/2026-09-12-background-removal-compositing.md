@@ -28,7 +28,8 @@
 | `server/app/placements.py` | `Box`, `Placement`, `load_placements()`; template path resolution |
 | `server/app/pipeline.py` | image functions; `compose()` orchestrator; `TextFields`; errors |
 | `server/app/storage.py` | `Uploader` protocol, `S3Uploader`, `MemoryUploader`, `UploadError` |
-| `server/app/main.py` | `create_app()` factory, routes, middleware, `make_remover()` |
+| `server/app/remover.py` | `Remover` type alias + lazily-importing `make_remover()` |
+| `server/app/main.py` | `create_app()` factory (no module-level app), `Runtime` dataclass, routes, middleware |
 | `server/app/fonts/Poppins-SemiBold.ttf` + `OFL.txt` | bundled font |
 | `server/templates/clean/card-*.jpg` | already committed |
 | `server/templates/placements.json` | measured geometry (values in Task 2) |
@@ -609,7 +610,7 @@ git commit -m "chore(server): bundle Poppins SemiBold (OFL) for the name line"
 
 - [ ] **Step 1: Write shared fixtures**
 
-`server/tests/conftest.py`:
+`server/tests/conftest.py` already exists (Task 1 review fix) with `make_settings`. Append the following (add the new imports at the top alongside the existing ones):
 ```python
 import io
 
@@ -736,18 +737,16 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .placements import Box, Placement
+from .remover import Remover
 
 MAX_SIDE = 2000
 ALPHA_THRESHOLD = 8
 FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Poppins-SemiBold.ttf"
 LINE_HEIGHT_FACTOR = 1.25
-
-Remover = Callable[[Image.Image], Image.Image]  # RGB in, RGBA out
 
 
 class BadImageError(ValueError):
@@ -1157,29 +1156,12 @@ git commit -m "feat(server): S3 uploader with in-memory test double"
 
 - [ ] **Step 1: Add an app fixture to conftest**
 
-Append to `server/tests/conftest.py`:
+`server/tests/conftest.py` already has `make_settings(**overrides)` (added in the Task 1 review fix; it uses `dataclasses.replace(load_settings(env={}), allowed_origins=["https://app.example"], **overrides)`). Append:
 ```python
 from fastapi.testclient import TestClient
 
-from app.config import Settings
 from app.main import create_app
 from app.storage import MemoryUploader
-
-
-def make_settings(**overrides) -> Settings:
-    base = dict(
-        aws_region="ap-south-1",
-        s3_bucket="cards",
-        s3_prefix="ai-shubh",
-        s3_public_read_acl=False,
-        allowed_origins=["https://app.example"],
-        rate_limit_per_minute=100,
-        jwt_validate_url="",
-        max_upload_bytes=10 * 1024 * 1024,
-        model_name="isnet-general-use",
-    )
-    base.update(overrides)
-    return Settings(**base)
 
 
 @pytest.fixture
@@ -1189,7 +1171,7 @@ def uploader() -> MemoryUploader:
 
 @pytest.fixture
 def client(uploader):
-    app = create_app(settings=make_settings(), remover=fake_remover, uploader=uploader)
+    app = create_app(settings=make_settings(rate_limit_per_minute=100), remover=fake_remover, uploader=uploader)
     with TestClient(app) as test_client:
         yield test_client
 ```
@@ -1348,40 +1330,36 @@ import hashlib
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 import httpx
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from .config import Settings, load_settings
 from .pipeline import BadImageError, NoSubjectError, TextFields, compose
-from .placements import load_placements
-from .storage import S3Uploader, UploadError
+from .placements import Placement, load_placements
+from .remover import Remover, make_remover
+from .storage import S3Uploader, UploadError, Uploader
 
 log = logging.getLogger("ai-shubh")
 
-Remover = Callable[[Image.Image], Image.Image]
 TokenValidator = Callable[[str], Awaitable[bool]]
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
-def make_remover(model_name: str) -> Remover:
-    """Build the real rembg remover. Imported lazily so tests never load the model."""
-    from rembg import new_session, remove  # noqa: WPS433 (lazy on purpose)
+@dataclass
+class Runtime:
+    """Heavy objects built once per process (in lifespan) or injected by tests."""
 
-    session = new_session(model_name)
-
-    def _remove(img: Image.Image) -> Image.Image:
-        return remove(img, session=session).convert("RGBA")
-
-    return _remove
+    remover: Remover | None = None
+    uploader: Uploader | None = None
 
 
 def make_token_validator(validate_url: str) -> TokenValidator:
@@ -1407,21 +1385,24 @@ def _bearer(authorization: str) -> str:
 def create_app(
     settings: Settings | None = None,
     remover: Remover | None = None,
-    uploader: Any | None = None,
+    uploader: Uploader | None = None,
     token_validator: TokenValidator | None = None,
+    placements: dict[str, Placement] | None = None,
 ) -> FastAPI:
-    settings = settings or load_settings()
-    placements = load_placements()
-    runtime: dict[str, Any] = {"remover": remover, "uploader": uploader}
+    """App factory. Run with `uvicorn app.main:create_app --factory`."""
+    settings = settings if settings is not None else load_settings()
+    placements = placements if placements is not None else load_placements()
+    runtime = Runtime(remover=remover, uploader=uploader)
     if token_validator is None and settings.jwt_validate_url:
         token_validator = make_token_validator(settings.jwt_validate_url)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        if runtime["remover"] is None:
-            runtime["remover"] = make_remover(settings.model_name)
-        if runtime["uploader"] is None:
-            runtime["uploader"] = S3Uploader(
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        if runtime.remover is None:
+            runtime.remover = make_remover(settings.model_name)
+        if runtime.uploader is None:
+            runtime.uploader = S3Uploader(
                 bucket=settings.s3_bucket,
                 region=settings.aws_region,
                 prefix=settings.s3_prefix,
@@ -1444,7 +1425,11 @@ def create_app(
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        return {"status": "ok", "model_loaded": runtime["remover"] is not None}
+        return {
+            "status": "ok",
+            "model_loaded": runtime.remover is not None,
+            "uploader_ready": runtime.uploader is not None,
+        }
 
     @app.post("/composite")
     @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
@@ -1476,6 +1461,7 @@ def create_app(
         if len(data) > settings.max_upload_bytes:
             raise HTTPException(status_code=413, detail="Photo larger than 10 MB")
 
+        assert runtime.remover is not None and runtime.uploader is not None  # set in lifespan
         request_id = uuid.uuid4().hex[:8]
         log.info(
             "composite req=%s template=%s jwt=%s bytes=%d",
@@ -1487,7 +1473,7 @@ def create_app(
 
         try:
             jpeg = await run_in_threadpool(
-                compose, data, placement, TextFields(name=name, constituency=constituency, state=state), runtime["remover"]
+                compose, data, placement, TextFields(name=name, constituency=constituency, state=state), runtime.remover
             )
         except BadImageError as exc:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
@@ -1495,7 +1481,7 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         try:
-            url = await run_in_threadpool(runtime["uploader"].upload_jpeg, jpeg)
+            url = await run_in_threadpool(runtime.uploader.upload_jpeg, jpeg)
         except UploadError as exc:
             log.error("composite req=%s upload failed: %s", request_id, exc)
             raise HTTPException(status_code=502, detail="Upload failed") from exc
@@ -1503,15 +1489,12 @@ def create_app(
         return {"imageUrl": url}
 
     return app
-
-
-app = create_app()
 ```
 
 - [ ] **Step 5: Run the whole suite**
 
 Run: `pytest -v`
-Expected: all pass (3 config/health + 5 placements + 14 pipeline + 4 storage + 13 api = 39)
+Expected: all pass (2 config + 3 health + 5 placements + 14 pipeline + 4 storage + 13 api = 41). Note `test_health.py` (from the Task 1 review fix) asserts `{"status": "ok", "model_loaded": True}` exactly; update that assertion to include `"uploader_ready": False` now that health reports the uploader too.
 
 - [ ] **Step 6: Commit**
 
@@ -1554,7 +1537,7 @@ COPY app ./app
 COPY templates ./templates
 
 EXPOSE 8000
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips="*"
+CMD uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips="*"
 ```
 
 `server/.dockerignore`:
@@ -1595,7 +1578,7 @@ Errors: 400 bad template, 401 missing/invalid token, 413 too large, 415 bad imag
     pytest
     cp .env.example .env   # fill AWS + bucket values
     set -a; source .env; set +a
-    uvicorn app.main:app --reload --port 8000
+    uvicorn app.main:create_app --factory --reload --port 8000
 
 First start downloads the ISNet model (~170 MB) into `~/.u2net/`.
 
@@ -1627,7 +1610,7 @@ python - <<'EOF'
 import io, sys
 from pathlib import Path
 from PIL import Image
-from app.main import make_remover
+from app.remover import make_remover
 from app.pipeline import compose, TextFields
 from app.placements import load_placements
 remover = make_remover("isnet-general-use")   # downloads model on first run
@@ -1966,4 +1949,4 @@ git commit -m "docs(server): record Railway deployment URL"
 
 **Placeholder scan** — none; every step has code or an exact command.
 
-**Type consistency** — `Box(x,y,w,h)` with `.right/.bottom/.inside()`; `Placement(template_id, photo_box, text_box, text_color, font_size, align)`; `TextFields(name, constituency, state)`; `Remover = Callable[[Image], Image]`; `create_app(settings, remover, uploader, token_validator)`; `Uploader.upload_jpeg(bytes) -> str`; frontend `CompositeParams.jwt`, `Processing` prop `jwt`. All consistent across tasks.
+**Type consistency** — `Box(x,y,w,h)` with `.right/.bottom/.inside()`; `Placement(template_id, photo_box, text_box, text_color, font_size, align)`; `TextFields(name, constituency, state)`; `Remover = Callable[[Image], Image]` (in `remover.py`); `Runtime(remover, uploader)`; `create_app(settings, remover, uploader, token_validator, placements)` with no module-level `app` (uvicorn `--factory`); `Uploader.upload_jpeg(bytes) -> str`; frontend `CompositeParams.jwt`, `Processing` prop `jwt`. All consistent across tasks.

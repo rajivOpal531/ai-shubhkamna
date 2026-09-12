@@ -12,8 +12,10 @@ vi.mock('./services/profile', () => ({
     district: 'Gautam Buddha Nagar',
   }),
 }));
-vi.mock('./services/composite', () => ({
-  compositePhoto: vi.fn().mockResolvedValue({ imageUrl: 'https://cdn.narendramodi.in/shubhkamna2026/card.jpg' }),
+const compositePhotoMock = vi.fn().mockResolvedValue({ imageUrl: 'https://cdn.narendramodi.in/shubhkamna2026/card.jpg' });
+vi.mock('./services/composite', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./services/composite')>()),
+  compositePhoto: (...args: unknown[]) => compositePhotoMock(...args),
 }));
 vi.mock('./services/createPost', () => ({
   createPostByImageUrl: vi.fn().mockResolvedValue({ ok: true, status: 200 }),

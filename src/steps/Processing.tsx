@@ -13,6 +13,9 @@ type Props = {
 };
 
 function errorMessage(failure: CompositeError): string {
+  if (failure.kind === 'config') {
+    return "This feature isn't set up correctly yet. Please try again later.";
+  }
   switch (failure.status) {
     case 422:
       return "We couldn't find a person in that photo. Please try a clearer photo with just you in the frame.";
@@ -29,6 +32,8 @@ export function Processing({ jwt, photo, template, profile, onComposited, onErro
   const [failure, setFailure] = useState<CompositeError | null>(null);
   const [attempt, setAttempt] = useState(0);
   const latest = useRef({ profile, onComposited, jwt });
+  // Deliberate render-phase mutation: keeps `latest` current for the effect below without
+  // retriggering it; idempotent since it always assigns the same shape from this render's props.
   latest.current = { profile, onComposited, jwt };
 
   useEffect(() => {
@@ -60,14 +65,14 @@ export function Processing({ jwt, photo, template, profile, onComposited, onErro
   }, [attempt, photo, template.id, template.image]);
 
   useEffect(() => {
-    if (failure?.requestId) {
-      console.error('compositing failed', failure.status, failure.requestId);
+    if (failure) {
+      console.error('compositing failed', failure.kind, failure.status, failure.requestId);
     }
   }, [failure]);
 
   if (failure) {
     return (
-      <div className="processing processing--error">
+      <div className="processing processing--error" role="alert">
         <p>{errorMessage(failure)}</p>
         {failure.retryable && (
           <button type="button" onClick={() => setAttempt((value) => value + 1)}>

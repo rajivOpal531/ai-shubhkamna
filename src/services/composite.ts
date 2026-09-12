@@ -17,17 +17,25 @@ type Options = {
 };
 
 export class CompositeError extends Error {
+  readonly kind: 'http' | 'network' | 'config';
+
   constructor(
     message: string,
     readonly status: number | null,
     readonly requestId: string | null,
+    kind?: 'http' | 'network' | 'config',
   ) {
     super(message);
     this.name = 'CompositeError';
+    this.kind = kind ?? (typeof status === 'number' ? 'http' : 'network');
   }
 
-  /** 413/415/422 mean the same photo will fail again; everything else is worth a retry. */
+  /**
+   * A misconfiguration will fail again on retry, as will 413/415/422 (the same photo will
+   * fail again); everything else is worth a retry.
+   */
   get retryable(): boolean {
+    if (this.kind === 'config') return false;
     return this.status === null || ![413, 415, 422].includes(this.status);
   }
 }
@@ -52,6 +60,7 @@ async function realCompositePhoto({
       'VITE_COMPOSITE_URL is not configured (set it, or set VITE_USE_MOCK_COMPOSITE=true)',
       null,
       null,
+      'config',
     );
   }
 
@@ -62,8 +71,10 @@ async function realCompositePhoto({
   form.append('constituency', profile.constituency);
   form.append('state', profile.state);
 
-  const effectiveSignal =
-    signal ?? (typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(COMPOSITE_TIMEOUT_MS) : undefined);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), COMPOSITE_TIMEOUT_MS);
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener('abort', () => controller.abort(), { once: true });
 
   let response: Response;
   try {
@@ -71,10 +82,12 @@ async function realCompositePhoto({
       method: 'POST',
       body: form,
       headers: { Authorization: `Bearer ${jwt}` },
-      signal: effectiveSignal,
+      signal: controller.signal,
     });
   } catch {
     throw new CompositeError('Compositing request failed or timed out', null, null);
+  } finally {
+    clearTimeout(timer);
   }
 
   if (!response.ok) {

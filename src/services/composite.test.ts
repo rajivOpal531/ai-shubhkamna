@@ -12,11 +12,9 @@ vi.mock('../config', () => ({
   },
 }));
 
-import { compositePhoto, CompositeError } from './composite';
+import { compositePhoto, CompositeError, COMPOSITE_TIMEOUT_MS } from './composite';
 import { config } from '../config';
 import type { Profile } from '../types';
-
-const hasAbortSignalTimeout = typeof AbortSignal.timeout === 'function';
 
 const PROFILE: Profile = {
   username: 'Rajiv Ranjan',
@@ -39,6 +37,7 @@ describe('compositePhoto', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('returns a composited image blob when useMock is true', async () => {
@@ -71,9 +70,7 @@ describe('compositePhoto', () => {
     expect(form.get('photo')).toBeInstanceOf(Blob);
     expect((form.get('photo') as File).name).toBe('photo.jpg');
     expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
-    if (hasAbortSignalTimeout) {
-      expect(init.signal).toBeDefined();
-    }
+    expect(init.signal).toBeDefined();
   });
 
   it('throws a CompositeError with status and request id when the compositing endpoint responds with a non-ok status', async () => {
@@ -133,7 +130,7 @@ describe('compositePhoto', () => {
     expect((error as CompositeError).retryable).toBe(true);
   });
 
-  it('passes a supplied signal through to fetch', async () => {
+  it('propagates abort from the caller signal to the fetch signal', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -146,7 +143,38 @@ describe('compositePhoto', () => {
     await compositePhoto({ ...PARAMS, signal: controller.signal }, { useMock: false });
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(init.signal).toBe(controller.signal);
+    expect(init.signal).not.toBe(controller.signal);
+    expect(init.signal!.aborted).toBe(false);
+
+    controller.abort();
+
+    expect(init.signal!.aborted).toBe(true);
+  });
+
+  it('arms the timeout even when a caller signal is supplied, aborting fetch after COMPOSITE_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal!.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const callerController = new AbortController();
+
+    const pending = compositePhoto({ ...PARAMS, signal: callerController.signal }, { useMock: false }).catch(
+      (err) => err,
+    );
+
+    await vi.advanceTimersByTimeAsync(COMPOSITE_TIMEOUT_MS + 1);
+    const error = await pending;
+
+    expect(error).toBeInstanceOf(CompositeError);
+    expect((error as CompositeError).status).toBeNull();
+    expect((error as CompositeError).kind).toBe('network');
+    expect((error as CompositeError).retryable).toBe(true);
   });
 
   it('draws the photo at the expected offset and size on the mock canvas', async () => {

@@ -66,6 +66,17 @@ describe('Processing', () => {
     expect(screen.getByRole('button', { name: /retake photo/i })).toBeInTheDocument();
   });
 
+  it('shows the config message with no Retry button for a config failure', async () => {
+    compositePhotoMock.mockRejectedValue(new CompositeError('cfg', null, null, 'config'));
+    render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);
+
+    expect(
+      await screen.findByText(/isn't set up correctly yet/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /retake photo/i })).toBeInTheDocument();
+  });
+
   it('aborts the in-flight request on unmount', async () => {
     let capturedSignal: AbortSignal | undefined;
     compositePhotoMock.mockImplementation(

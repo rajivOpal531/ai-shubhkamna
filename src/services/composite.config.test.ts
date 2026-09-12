@@ -40,6 +40,8 @@ describe('compositePhoto misconfiguration guard', () => {
     expect(error).toBeInstanceOf(CompositeError);
     expect((error as InstanceType<typeof CompositeError>).message).toContain('VITE_COMPOSITE_URL');
     expect((error as InstanceType<typeof CompositeError>).status).toBeNull();
+    expect((error as InstanceType<typeof CompositeError>).kind).toBe('config');
+    expect((error as InstanceType<typeof CompositeError>).retryable).toBe(false);
   });
 
   it('rejects with a CompositeError mentioning VITE_COMPOSITE_URL when the URL still has the <railway-app> placeholder', async () => {
@@ -52,5 +54,7 @@ describe('compositePhoto misconfiguration guard', () => {
 
     expect(error).toBeInstanceOf(CompositeError);
     expect((error as InstanceType<typeof CompositeError>).message).toContain('VITE_COMPOSITE_URL');
+    expect((error as InstanceType<typeof CompositeError>).kind).toBe('config');
+    expect((error as InstanceType<typeof CompositeError>).retryable).toBe(false);
   });
 });

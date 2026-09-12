@@ -89,7 +89,9 @@ def client_ip_key(request: Request) -> str:
     slowapi passes the request only if this parameter is literally named `request`."""
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
-        return "ip:" + forwarded.rsplit(",", 1)[-1].strip()
+        candidate = forwarded.rsplit(",", 1)[-1].strip()
+        if candidate:
+            return "ip:" + candidate
     return "ip:" + get_remote_address(request)
 
 
@@ -99,20 +101,22 @@ async def _validate_request(
     fields: TextFields,
     settings: Settings,
     placements: dict[str, Placement],
+    request_id: str,
 ) -> tuple[Placement, bytes]:
     """Cheap guards before any real work: returns the placement and the photo bytes."""
+    headers = {"X-Request-Id": request_id}
     placement = placements.get(template)
     if placement is None:
-        raise HTTPException(status_code=400, detail=f"Unknown template '{template[:32]}'")
+        raise HTTPException(status_code=400, detail=f"Unknown template '{template[:32]}'", headers=headers)
     if photo.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(status_code=415, detail="Unsupported image type")
+        raise HTTPException(status_code=415, detail="Unsupported image type", headers=headers)
     # Belt and braces: BodyLimitMiddleware already capped the whole body further upstream.
     data = await photo.read(settings.max_upload_bytes + 1)
     if len(data) > settings.max_upload_bytes:
         megabytes = settings.max_upload_bytes // (1024 * 1024)
-        raise HTTPException(status_code=413, detail=f"Photo larger than {megabytes} MB")
+        raise HTTPException(status_code=413, detail=f"Photo larger than {megabytes} MB", headers=headers)
     if any(len(v) > settings.max_field_chars for v in (fields.name, fields.constituency, fields.state)):
-        raise HTTPException(status_code=422, detail="Field too long")
+        raise HTTPException(status_code=422, detail="Field too long", headers=headers)
     return placement, data
 
 
@@ -181,6 +185,7 @@ def create_app(
         allow_origins=settings.allowed_origins,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
+        expose_headers=["X-Request-Id"],
     )
 
     @app.get("/health")
@@ -221,7 +226,7 @@ def create_app(
                 raise HTTPException(status_code=401, detail="Invalid token", headers=rid)
 
         fields = TextFields(name=name, constituency=constituency, state=state)
-        placement, data = await _validate_request(photo, template, fields, settings, placements)
+        placement, data = await _validate_request(photo, template, fields, settings, placements, request_id)
         if runtime.remover is None or runtime.uploader is None:
             raise HTTPException(status_code=503, detail="Service starting", headers=rid)
 

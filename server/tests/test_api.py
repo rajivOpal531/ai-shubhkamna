@@ -1,11 +1,13 @@
 import concurrent.futures
+import re
 import threading
 import time
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
-from app.main import TokenValidatorUnavailable, create_app
+from app.main import TokenValidatorUnavailable, client_ip_key, create_app
 from tests.conftest import empty_remover, fake_remover, make_photo_bytes, make_settings
 
 AUTH = {"Authorization": "Bearer test-token"}
@@ -342,3 +344,46 @@ def test_per_ip_ceiling_uses_rightmost_forwarded_for(uploader):
             },
         )
     assert other.status_code == 200, "a different rightmost hop gets its own budget"
+
+
+def test_request_id_header_on_validation_errors(client):
+    request_id_pattern = re.compile(r"^[0-9a-f]{8}$")
+
+    unknown_template = _post(client, template="card-7")
+    assert unknown_template.status_code == 400
+    assert request_id_pattern.match(unknown_template.headers["x-request-id"])
+
+    wrong_content_type = client.post(
+        "/composite",
+        data={"template": "card-2"},
+        files={"photo": ("p.txt", b"hello", "text/plain")},
+        headers=AUTH,
+    )
+    assert wrong_content_type.status_code == 415
+    assert request_id_pattern.match(wrong_content_type.headers["x-request-id"])
+
+    field_too_long = _post(client, name="x" * 121)
+    assert field_too_long.status_code == 422
+    assert request_id_pattern.match(field_too_long.headers["x-request-id"])
+
+
+def test_cors_exposes_request_id(client):
+    response = _post(client, headers={**AUTH, "Origin": "https://app.example"})
+    assert response.status_code == 200
+    assert "x-request-id" in response.headers.get("access-control-expose-headers", "").lower()
+
+
+def test_client_ip_key_falls_back_on_blank_forwarded_header():
+    request = Request(
+        {
+            "type": "http",
+            "headers": [(b"x-forwarded-for", b"   ")],
+            "client": ("9.9.9.9", 1234),
+            "method": "GET",
+            "path": "/",
+            "query_string": b"",
+            "scheme": "http",
+            "server": ("s", 80),
+        }
+    )
+    assert client_ip_key(request) == "ip:9.9.9.9"

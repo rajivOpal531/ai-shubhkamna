@@ -30,11 +30,14 @@ Success response, `200 OK`:
 { "imageUrl": "https://<bucket>.s3.<region>.amazonaws.com/<prefix>/<uuid>.jpg" }
 ```
 
-Every response (success and the 401/413/415/422/500/502/503 cases raised inside the route) carries
-an `X-Request-Id` header — an 8-character hex id, also logged server-side, that a caller can quote
-back in a support request. The 429 from either rate limiter and the body-limit middleware's own 413
-answer above the route, before a request id is minted, so those two responses do not carry the
-header.
+Every response the route itself produces — the success response and every 4xx/5xx it raises
+(400/401/413/415/422/500/502/503) — carries an `X-Request-Id` header: an 8-character hex id, also
+logged server-side, that a caller can quote back in a support request. Only two responses answer
+before the route runs and so never get a request id minted: the `429` from either rate limiter, and
+the body-limit middleware's own `413` for a request body that's oversized before multipart parsing
+even starts. `CORSMiddleware` is configured with `expose_headers=["X-Request-Id"]`, so a browser
+page calling this API cross-origin can read the header off the response (without that, browsers
+hide all but a handful of default response headers from cross-origin JavaScript).
 
 Error responses:
 
@@ -153,7 +156,9 @@ Create a new Railway service from this repository:
 - **Memory**: 2 GB (ISNet inference plus a couple of concurrent requests needs headroom beyond the
   ~1 GB per composite noted above)
 
-Environment variables to set on the Railway service:
+Environment variables to set on the Railway service. Everything down to `REMBG_MODEL` is read by
+the app itself (`app/config.py`, via `load_settings`); the last two are read by the container/image,
+not by `app/config.py`, and you should not need to set them yourself:
 
 | Variable                        | Purpose                                                                 |
 | -------------------------------- | ------------------------------------------------------------------------ |
@@ -170,6 +175,8 @@ Environment variables to set on the Railway service:
 | `MAX_CONCURRENT_COMPOSITES`       | Concurrent background-removal jobs allowed                              |
 | `JWT_VALIDATE_URL`                | Optional URL this service calls to validate the caller's bearer token    |
 | `REMBG_MODEL`                     | rembg model name; `isnet-general-use` is the one baked into the image    |
+| `PORT`                            | Set by Railway, not by you; the container listens on it (default `8000` if unset). Not read by `app/config.py`. |
+| `U2NET_HOME`                      | Set in the Dockerfile to `/models`, where the ISNet weights are baked in at build time. Not read by `app/config.py` — it's how rembg finds the model without downloading it at runtime. Do not override. |
 
 On the frontend, point the app at this deployment:
 

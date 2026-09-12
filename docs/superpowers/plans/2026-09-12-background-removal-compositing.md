@@ -33,7 +33,7 @@
 | `server/app/fonts/Poppins-SemiBold.ttf` + `OFL.txt` | bundled font |
 | `server/templates/clean/card-*.jpg` | already committed |
 | `server/templates/placements.json` | measured geometry (values in Task 2) |
-| `server/tools/check_placements.py` | renders boxes for visual review, validates bounds |
+| `server/tools/check_placements.py` | renders boxes on the with-silhouette cards (`src/assets/templates`) for visual review, validates bounds |
 | `server/tests/conftest.py` | shared fixtures (fake remover, memory uploader, app) |
 | `server/tests/test_*.py` | per-module tests |
 | `server/Dockerfile` | Railway build |
@@ -556,7 +556,9 @@ if __name__ == "__main__":
 - [ ] **Step 7: Run the tool and eyeball the sheet**
 
 Run: `python tools/check_placements.py`
-Expected: `wrote 11 cards + contact-sheet.jpg to check-output`, exit code 0. Open `server/check-output/contact-sheet.jpg`: green boxes cover the silhouette area (bottom-right on all but card-15, bottom-left on card-15); magenta boxes wrap "-Your name / constituency, State" on every card.
+Expected: `wrote 11 cards + contact-sheet.jpg to check-output`, exit code 0. The tool draws on the with-silhouette originals from `src/assets/templates/` (falling back to the clean card if one is missing) because the silhouette is the only visual reference for `photo_box`. Open `server/check-output/contact-sheet.jpg`: green boxes cover the silhouette (bottom-right on all but card-15, bottom-left on card-15); magenta boxes wrap "-Your name / constituency, State" on every card.
+
+Review note (2026-09-12): after code review, `load_placements` also validates bounds, hex colour, integer coordinates and font size at load time with the template id in the error, the tool prints problems before rendering and skips the sheet when nothing rendered, and `tests/test_check_placements.py` covers the tool's exit codes.
 
 - [ ] **Step 8: Commit**
 

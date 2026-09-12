@@ -19,7 +19,7 @@ This supersedes the "Photo compositing" item under *Open integrations* in
 | Stack / hosting | Python 3.11, FastAPI, `rembg`, Pillow, boto3; deployed to Railway via Dockerfile |
 | Code location | Same repo, `server/` folder; Railway root directory = `server/` |
 | Return value | S3 URL (`{ imageUrl }`); bucket and IAM credentials already exist |
-| Cutout placement | Auto-derived by diffing with-vector vs clean template; committed JSON |
+| Cutout placement | Hand-measured per template in committed JSON (diffing was tried and rejected, see Template data) |
 | Name line | Render name + constituency + state in the caption placeholder position |
 | Clean templates | Still contain "-Your name / constituency, State" text; service paints over it |
 | Protection | CORS allowlist + per-IP rate limit; JWT required but not validated yet; validation hook via env |
@@ -41,9 +41,9 @@ server/
     fonts/Outfit-*.ttf # bundled OFL font (or the design team's font if supplied)
   templates/
     clean/card-<n>.jpg # without-vector set, same ids as src/data/templates.ts
-    placements.json    # generated + hand-edited, committed
+    placements.json    # hand-measured, committed
   tools/
-    derive_placements.py
+    check_placements.py
   tests/
 ```
 
@@ -102,7 +102,7 @@ Runs in order, all in memory, no temp files:
 4. **Fit** the cutout into `photo_box`: scale so it fits within the box preserving aspect ratio
    (contain), centre horizontally, anchor to the box's bottom edge.
 5. **Paste** onto the clean template using the alpha channel as mask.
-6. **Text**: fill `text_box` with `block_color`, then draw up to two lines inside it with the
+6. **Text**: fill `text_box` with the sampled background colour (see Template data), then draw up to two lines inside it with the
    bundled font at `font_size`:
    - line 1: `-{name}` (only if `name` non-blank)
    - line 2: `{constituency}, {state}` — whichever parts are non-blank, joined with ", "
@@ -122,27 +122,33 @@ Illustrative values only; real numbers come from the script and hand measurement
   "card-2": {
     "photo_box":  { "x": 640, "y": 530, "w": 380, "h": 730 },
     "text_box":   { "x": 115, "y": 1080, "w": 470, "h": 80 },
-    "block_color": "#3D50B3",
     "text_color":  "#FFFFFF",
     "font_size":   28
   }
 }
 ```
 
-- `photo_box` is written by `tools/derive_placements.py`: for each id, load the with-vector card
-  from `../src/assets/templates/` and the clean card from `templates/clean/`, assert same size,
-  compute per-pixel absolute difference (max over RGB), threshold at 24, take the bounding box of
-  differing pixels. Refuses to run if the box is empty (identical images) or covers more than
-  60 % of the card (wrong pairing).
-- `text_box`, `block_color`, `text_color`, `font_size` are hand-measured per template and
-  preserved by the script on re-run (it only overwrites `photo_box`).
+- `photo_box` is **hand-measured** from the with-vector card (bounding box of the silhouette,
+  including the part that runs off the bottom edge). Diffing the two sets was tried first and
+  rejected: the silhouette is pure white, so wherever it overlaps the card's white areas the
+  diff is empty (card-2 yields only the head), and JPEG re-encoding noise pollutes the rest.
+- `text_box`, `text_color`, `font_size` are hand-measured per template from the clean card.
+- `block_color` is not stored; the pipeline samples the template pixel 4 px left of
+  `text_box`'s top-left corner at request time, so it always matches the actual background
+  (blue block on card-2, purple on card-5, cream on card-4, and so on).
+- `tools/check_placements.py` is a validation helper, not a generator: it renders every
+  `photo_box` and `text_box` as an outline on the vector card into a scratch folder for visual
+  review, and fails if any box is out of bounds or any id is missing.
+- The stakeholder's Dropbox "Without User Vector" folder had cards 4 and 5 swapped relative to
+  the with-vector set; they were renamed on import so ids match by design (verified by image
+  similarity). Any future re-import must re-check pairing.
 - Template ids and the set of files must match `src/data/templates.ts` exactly; a test asserts
   this.
 
 ### Clean templates
 
-Supplied by the stakeholder (not yet in hand as of this spec). Must be the same pixel dimensions
-as the with-vector set. Committed under `server/templates/clean/` with the same file naming.
+Received from the stakeholder's Dropbox on 2026-09-12; all 11 are 1080×1260, matching the
+with-vector set. Committed under `server/templates/clean/card-<n>.jpg`.
 
 ## Security and limits
 
@@ -201,8 +207,8 @@ Memory: rembg with ISNet needs roughly 1 GB RSS; the Railway service should be s
 
 All backend tests run without AWS or the real model:
 
-- `tests/test_derive_placements.py`: synthetic pairs → correct bbox; identical images → error;
-  oversized diff → error.
+- `tests/test_placements.py`: every template id has a placement; all boxes lie inside the
+  1080×1260 card; `check_placements.py` runs clean.
 - `tests/test_pipeline.py`: `rembg.remove` monkeypatched to return a fixed RGBA figure; asserts
   fit/anchor maths, text drawn inside `text_box`, blank fields skipped, placeholder region
   covered.
@@ -220,12 +226,12 @@ UAT JWT: Landing → Upload → Preview shows the S3 image → Post → Media Wa
 ## Out of scope
 
 - JWT validation itself (hook only).
-- Per-template manual override of `photo_box` (decided against; regenerate via the script).
+- Automatic derivation of `photo_box` (tried, rejected; see Template data).
 - Face/pose-aware placement; the fit is a plain contain + bottom anchor.
 - Storing or listing generated cards; S3 is write-only from this service.
 
 ## Open items
 
-1. Clean template files from the stakeholder → `server/templates/clean/`.
-2. Brand font file from design; until provided, Outfit (OFL) is bundled.
-3. Hand-measure `text_box`/colours for all 11 templates once the clean files are in hand.
+1. Brand font file from design; until provided, Outfit (OFL) is bundled.
+
+Resolved: clean template files received 2026-09-12 and committed under `server/templates/clean/`.

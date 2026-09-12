@@ -1,0 +1,43 @@
+.tips {
+  min-height: 100vh;
+  background: #fbf5ee;
+  padding: 16px;
+}
+
+.tips__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.tips__header button {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.tips ol {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px 20px 20px 40px;
+  margin: 16px 0 24px;
+}
+
+.tips li {
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.tips button[type='button']:last-child {
+  width: 100%;
+  padding: 14px;
+  border-radius: 24px;
+  background: #4c3fbb;
+  color: #fff;
+  border: none;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}

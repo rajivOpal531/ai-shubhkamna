@@ -47,21 +47,26 @@ async function mockCompositePhoto({ photo, templateImageUrl }: CompositeParams):
     return { imageBlob: photo };
   }
 
-  const [templateImg, photoImg] = await Promise.all([
-    loadImage(templateImageUrl),
-    loadImage(URL.createObjectURL(photo)),
-  ]);
+  const photoObjectUrl = URL.createObjectURL(photo);
+  try {
+    const [templateImg, photoImg] = await Promise.all([
+      loadImage(templateImageUrl),
+      loadImage(photoObjectUrl),
+    ]);
 
-  ctx.drawImage(templateImg, 0, 0, canvas.width, canvas.height);
-  ctx.drawImage(photoImg, canvas.width * 0.55, canvas.height * 0.45, canvas.width * 0.4, canvas.height * 0.5);
+    ctx.drawImage(templateImg, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(photoImg, canvas.width * 0.55, canvas.height * 0.45, canvas.width * 0.4, canvas.height * 0.5);
 
-  return new Promise((resolve) => {
-    canvas.toBlob(
-      (blob) => resolve({ imageBlob: blob ?? photo }),
-      'image/jpeg',
-      0.92,
-    );
-  });
+    return await new Promise((resolve) => {
+      canvas.toBlob(
+        (blob) => resolve({ imageBlob: blob ?? photo }),
+        'image/jpeg',
+        0.92,
+      );
+    });
+  } finally {
+    URL.revokeObjectURL(photoObjectUrl);
+  }
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

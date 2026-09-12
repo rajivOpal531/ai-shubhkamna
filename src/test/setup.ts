@@ -26,3 +26,7 @@ HTMLCanvasElement.prototype.toBlob = vi.fn(function toBlob(callback: BlobCallbac
 if (!URL.createObjectURL) {
   URL.createObjectURL = vi.fn(() => 'blob:fake-url');
 }
+
+if (!URL.revokeObjectURL) {
+  URL.revokeObjectURL = vi.fn();
+}

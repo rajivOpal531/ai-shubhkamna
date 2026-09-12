@@ -21,6 +21,7 @@ const PARAMS = {
 describe('compositePhoto', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('returns a composited image blob when useMock is true', async () => {
@@ -50,6 +51,24 @@ describe('compositePhoto', () => {
 
     await expect(compositePhoto(PARAMS, { useMock: false })).rejects.toThrow(
       'Compositing failed with status 502',
+    );
+  });
+
+  it('draws the photo at the expected offset and size on the mock canvas', async () => {
+    const drawImage = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage,
+    } as unknown as CanvasRenderingContext2D);
+
+    await compositePhoto(PARAMS, { useMock: true });
+
+    expect(drawImage).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      1080 * 0.55,
+      1260 * 0.45,
+      1080 * 0.4,
+      1260 * 0.5,
     );
   });
 });

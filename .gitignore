@@ -6,3 +6,10 @@ dist
 *.tsbuildinfo
 /vite.config.js
 /vite.config.d.ts
+
+server/.venv/
+server/.env
+server/__pycache__/
+server/**/__pycache__/
+server/.pytest_cache/
+server/check-output/

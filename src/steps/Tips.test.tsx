@@ -15,4 +15,11 @@ describe('Tips', () => {
     await userEvent.click(screen.getByRole('button', { name: /proceed/i }));
     expect(onProceed).toHaveBeenCalled();
   });
+
+  it('calls onBack when the back button is clicked', async () => {
+    const onBack = vi.fn();
+    render(<Tips onProceed={vi.fn()} onBack={onBack} />);
+    await userEvent.click(screen.getByRole('button', { name: /back/i }));
+    expect(onBack).toHaveBeenCalled();
+  });
 });

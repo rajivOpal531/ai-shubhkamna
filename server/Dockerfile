@@ -7,7 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /srv
 
 # libraqm: HarfBuzz text shaping so Devanagari and other Indic scripts render with correct
-# conjuncts/matras in the name line. libgl1/libglib2.0-0: onnxruntime/opencv deps for rembg.
+# conjuncts/matras in the name line. libglib2.0-0 is required by opencv-python-headless (pulled in
+# by rembg); libgl1 is kept defensively for onnxruntime -- try dropping it once a build proves it
+# unnecessary.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libraqm0 libfribidi0 libharfbuzz0b \
  && rm -rf /var/lib/apt/lists/*
@@ -24,9 +26,16 @@ RUN python -c "from PIL import features; assert features.check('raqm'), 'libraqm
 COPY app ./app
 COPY templates ./templates
 
-EXPOSE 8000
-# --forwarded-allow-ips="*" makes uvicorn rewrite request.client from X-Forwarded-For (leftmost
+# Drop root for everything the app does at runtime; /models and /srv were baked by root above and
+# are world-readable, which is all the app needs.
+RUN useradd --system --uid 10001 --no-create-home appuser
+USER 10001
+
+# Railway injects PORT; the default of 8000 below is for local docker run.
+# --forwarded-allow-ips='*' makes uvicorn rewrite request.client from X-Forwarded-For (leftmost
 # entry, client-controlled). The per-IP rate limit deliberately does NOT rely on request.client:
 # it reads the RIGHTMOST X-Forwarded-For entry, which the platform proxy appends. Narrow this
 # flag to the proxy range if Railway publishes one.
-CMD uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips="*"
+# Exec form + an explicit `exec` so uvicorn is PID 1 and receives Railway's SIGTERM directly;
+# the `sh -c` wrapper is only there to expand ${PORT}.
+CMD ["sh", "-c", "exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]

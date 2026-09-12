@@ -32,10 +32,11 @@ Success response, `200 OK`:
 
 Every response the route itself produces — the success response and every 4xx/5xx it raises
 (400/401/413/415/422/500/502/503) — carries an `X-Request-Id` header: an 8-character hex id, also
-logged server-side, that a caller can quote back in a support request. Only two responses answer
-before the route runs and so never get a request id minted: the `429` from either rate limiter, and
-the body-limit middleware's own `413` for a request body that's oversized before multipart parsing
-even starts. `CORSMiddleware` is configured with `expose_headers=["X-Request-Id"]`, so a browser
+logged server-side, that a caller can quote back in a support request. FastAPI's own `422` for a
+missing or malformed field (raised before the route body runs) carries one too, minted by the
+`RequestValidationError` handler in `app/main.py`. Only two responses have no request id at all:
+the `429` from either rate limiter, and the body-limit middleware's own `413` for a request body
+that's oversized before multipart parsing even starts — both answer before any id is minted. `CORSMiddleware` is configured with `expose_headers=["X-Request-Id"]`, so a browser
 page calling this API cross-origin can read the header off the response (without that, browsers
 hide all but a handful of default response headers from cross-origin JavaScript).
 
@@ -156,9 +157,14 @@ Create a new Railway service from this repository:
 - **Memory**: 2 GB (ISNet inference plus a couple of concurrent requests needs headroom beyond the
   ~1 GB per composite noted above)
 
+The container drops to a non-root user (uid 10001) after the build steps, and its `CMD` is exec-form
+with an explicit `exec`, so uvicorn runs as PID 1 and receives Railway's `SIGTERM` directly on
+redeploy or shutdown rather than having it swallowed by a wrapper shell.
+
 Environment variables to set on the Railway service. Everything down to `REMBG_MODEL` is read by
-the app itself (`app/config.py`, via `load_settings`); the last two are read by the container/image,
-not by `app/config.py`, and you should not need to set them yourself:
+the app (`app/config.py`) or by boto3 directly (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`); the
+last two are read by the container/image, not by `app/config.py`, and you should not need to set
+them yourself:
 
 | Variable                        | Purpose                                                                 |
 | -------------------------------- | ------------------------------------------------------------------------ |
@@ -181,7 +187,7 @@ not by `app/config.py`, and you should not need to set them yourself:
 On the frontend, point the app at this deployment:
 
 ```
-VITE_COMPOSITE_URL=https://<app>.up.railway.app/composite
+VITE_COMPOSITE_URL=https://<railway-app>.up.railway.app/composite
 VITE_USE_MOCK_COMPOSITE=false
 ```
 

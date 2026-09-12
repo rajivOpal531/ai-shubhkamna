@@ -373,11 +373,37 @@ def test_cors_exposes_request_id(client):
     assert "x-request-id" in response.headers.get("access-control-expose-headers", "").lower()
 
 
-def test_client_ip_key_falls_back_on_blank_forwarded_header():
+def test_missing_required_field_422_carries_request_id(client):
+    """FastAPI raises this 422 itself, before the route body runs -- the handler in main.py is what
+    puts a request id on it."""
+    response = client.post(
+        "/composite",
+        files={"photo": ("p.jpg", make_photo_bytes(), "image/jpeg")},  # no `template` field
+        headers=AUTH,
+    )
+    assert response.status_code == 422, response.text
+    assert re.match(r"^[0-9a-f]{8}$", response.headers["x-request-id"])
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        # RFC 7230: repeated header lines are equivalent to one comma-joined line, so a client
+        # injecting its own X-Forwarded-For line cannot shadow the entry the proxy appends.
+        ([(b"x-forwarded-for", b"evil"), (b"x-forwarded-for", b"203.0.113.9")], "ip:203.0.113.9"),
+        ([(b"x-forwarded-for", b"1.1.1.1, 203.0.113.9:41234")], "ip:203.0.113.9"),  # port stripped
+        ([(b"x-forwarded-for", b"[2001:db8::99]:41234")], "ip:2001:db8::99"),  # bracketed IPv6 + port
+        ([(b"x-forwarded-for", b"2001:db8::99")], "ip:2001:db8::99"),  # bare IPv6 left alone
+        ([(b"x-forwarded-for", b"1.1.1.1, 203.0.113.9,")], "ip:203.0.113.9"),  # trailing comma
+        ([(b"x-forwarded-for", b"   ")], "ip:9.9.9.9"),  # blank header -> socket peer
+        ([], "ip:9.9.9.9"),  # no header at all -> socket peer
+    ],
+)
+def test_client_ip_key_parses_forwarded_header(headers, expected):
     request = Request(
         {
             "type": "http",
-            "headers": [(b"x-forwarded-for", b"   ")],
+            "headers": headers,
             "client": ("9.9.9.9", 1234),
             "method": "GET",
             "path": "/",
@@ -386,4 +412,4 @@ def test_client_ip_key_falls_back_on_blank_forwarded_header():
             "server": ("s", 80),
         }
     )
-    assert client_ip_key(request) == "ip:9.9.9.9"
+    assert client_ip_key(request) == expected

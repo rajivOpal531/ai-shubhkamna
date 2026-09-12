@@ -12,7 +12,10 @@ import anyio
 import httpx
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -75,24 +78,39 @@ def rate_limit_key(request: Request) -> str:
     A 429 from either limit -- and the middleware's own 413 -- carries no X-Request-Id, because
     both answer before the route runs and no request id has been minted yet.
 
+    The no-token fallback is prefixed `jwtip:` rather than `ip:` so that it can never collide with
+    a `client_ip_key` bucket for the same address: slowapi namespaces a bucket by key plus limit
+    string, so two equal limit values would otherwise share one counter across both limiters.
+
     slowapi passes the request only if this parameter is literally named `request`.
     """
     token = _bearer(request.headers.get("authorization", ""))
     if token:
         return "jwt:" + hashlib.sha256(token.encode()).hexdigest()[:32]
-    return "ip:" + get_remote_address(request)
+    return "jwtip:" + get_remote_address(request)
+
+
+def _strip_port(host: str) -> str:
+    """'1.2.3.4:5678' -> '1.2.3.4'; '[2001:db8::1]:5678' -> '2001:db8::1'; bare IPv6 untouched."""
+    host = host.strip()
+    if host.startswith("["):
+        return host[1:].split("]", 1)[0]
+    if host.count(":") == 1:
+        return host.split(":", 1)[0]
+    return host
 
 
 def client_ip_key(request: Request) -> str:
-    """Per-source-IP bucket. Uses the RIGHTMOST X-Forwarded-For entry (appended by the trusted
-    platform proxy, unlike the leftmost one which the client controls); falls back to the socket peer.
-    slowapi passes the request only if this parameter is literally named `request`."""
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        candidate = forwarded.rsplit(",", 1)[-1].strip()
-        if candidate:
-            return "ip:" + candidate
-    return "ip:" + get_remote_address(request)
+    """Per-source-IP bucket keyed on the RIGHTMOST X-Forwarded-For entry (appended by the trusted
+    platform proxy; the leftmost is client-controlled). All header occurrences are joined first,
+    as RFC 7230 requires, so a client-injected extra header line cannot shadow the proxy's. Empty
+    segments (a trailing comma, say) are dropped so they cannot blank out the real rightmost entry.
+    Falls back to the socket peer. slowapi passes the request only if this parameter is literally
+    named `request`."""
+    forwarded = ", ".join(request.headers.getlist("x-forwarded-for"))
+    parts = [part.strip() for part in forwarded.split(",") if part.strip()]
+    rightmost = _strip_port(parts[-1]) if parts else ""
+    return "ip:" + (rightmost or get_remote_address(request))
 
 
 async def _validate_request(
@@ -187,6 +205,17 @@ def create_app(
         allow_headers=["Authorization", "Content-Type"],
         expose_headers=["X-Request-Id"],
     )
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """FastAPI's own 422 for a missing/malformed field never reaches the route, so mint the
+        request id here too -- otherwise the one error a caller hits most often has no id to quote."""
+        request_id = uuid.uuid4().hex[:8]
+        return JSONResponse(
+            status_code=422,
+            content={"detail": jsonable_encoder(exc.errors())},
+            headers={"X-Request-Id": request_id},
+        )
 
     @app.get("/health")
     async def health() -> dict[str, Any]:

@@ -94,6 +94,7 @@ function Flow() {
       )}
       {step === 'processing' && photo && (
         <Processing
+          jwt={jwt}
           photo={photo}
           template={selectedTemplate}
           profile={{ ...profile, username: name }}

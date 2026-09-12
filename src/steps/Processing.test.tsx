@@ -21,15 +21,16 @@ describe('Processing', () => {
     compositePhotoMock.mockResolvedValue({ imageBlob: new Blob(['x']) });
     const onComposited = vi.fn();
     render(
-      <Processing photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={onComposited} onError={vi.fn()} />,
+      <Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={onComposited} onError={vi.fn()} />,
     );
 
     await waitFor(() => expect(onComposited).toHaveBeenCalledWith({ imageBlob: expect.any(Blob) }));
+    expect(compositePhotoMock).toHaveBeenCalledWith(expect.objectContaining({ jwt: 'test-jwt', templateId: 'card-1' }));
   });
 
   it('shows a retry/retake option when compositing fails, and retry calls compositePhoto again', async () => {
     compositePhotoMock.mockRejectedValue(new Error('network error'));
-    render(<Processing photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);
+    render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);
 
     const retryButton = await screen.findByRole('button', { name: /retry/i });
     expect(compositePhotoMock).toHaveBeenCalledTimes(1);
@@ -41,7 +42,7 @@ describe('Processing', () => {
   it('calls onError when Retake photo is clicked after a failure', async () => {
     compositePhotoMock.mockRejectedValue(new Error('network error'));
     const onError = vi.fn();
-    render(<Processing photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={onError} />);
+    render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={onError} />);
 
     await userEvent.click(await screen.findByRole('button', { name: /retake photo/i }));
     expect(onError).toHaveBeenCalled();
@@ -50,12 +51,12 @@ describe('Processing', () => {
   it('does not re-run compositing when only profile/onComposited identity changes', async () => {
     compositePhotoMock.mockResolvedValue({ imageBlob: new Blob(['x']) });
     const { rerender } = render(
-      <Processing photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />,
+      <Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />,
     );
     await waitFor(() => expect(compositePhotoMock).toHaveBeenCalledTimes(1));
 
     rerender(
-      <Processing photo={PHOTO} template={TEMPLATE} profile={{ ...PROFILE }} onComposited={vi.fn()} onError={vi.fn()} />,
+      <Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={{ ...PROFILE }} onComposited={vi.fn()} onError={vi.fn()} />,
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(compositePhotoMock).toHaveBeenCalledTimes(1);

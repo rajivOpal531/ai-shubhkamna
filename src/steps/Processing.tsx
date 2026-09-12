@@ -4,6 +4,7 @@ import type { CompositeResult, Profile, Template } from '../types';
 import './Processing.css';
 
 type Props = {
+  jwt: string;
   photo: Blob;
   template: Template;
   profile: Profile;
@@ -11,7 +12,7 @@ type Props = {
   onError: () => void;
 };
 
-export function Processing({ photo, template, profile, onComposited, onError }: Props) {
+export function Processing({ jwt, photo, template, profile, onComposited, onError }: Props) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const latest = useRef({ profile, onComposited });
@@ -21,7 +22,13 @@ export function Processing({ photo, template, profile, onComposited, onError }: 
     let cancelled = false;
     setFailed(false);
 
-    compositePhoto({ photo, templateId: template.id, templateImageUrl: template.image, profile: latest.current.profile })
+    compositePhoto({
+      photo,
+      templateId: template.id,
+      templateImageUrl: template.image,
+      profile: latest.current.profile,
+      jwt,
+    })
       .then((result) => {
         if (!cancelled) latest.current.onComposited(result);
       })
@@ -33,7 +40,7 @@ export function Processing({ photo, template, profile, onComposited, onError }: 
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attempt, photo, template.id, template.image]);
+  }, [attempt, photo, template.id, template.image, jwt]);
 
   if (failed) {
     return (

@@ -182,7 +182,7 @@ with-vector set. Committed under `server/templates/clean/card-<n>.jpg`.
 - `composite.ts` real path: send `template`, `photo`, `name`, `constituency`, `state` as
   multipart; set `Authorization: Bearer <jwt>`; read `imageUrl`. Replace the "provisional
   contract" comment with a pointer to `server/README.md`. Mock path unchanged.
-- `Processing.tsx`: read `jwt` via `useJwt()` and pass it into `compositePhoto`.
+- `Processing.tsx`: receives `jwt` as a prop from `App` (which already holds it) and passes it into `compositePhoto`.
 - `.env.example`: `VITE_COMPOSITE_URL=https://<railway-app>.up.railway.app/composite`,
   `VITE_USE_MOCK_COMPOSITE=false`, with a comment that setting it back to `true` restores the
   local canvas mock.

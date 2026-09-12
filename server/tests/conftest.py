@@ -2,9 +2,12 @@ import dataclasses
 import io
 
 import pytest
+from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
 from app.config import Settings, load_settings
+from app.main import create_app
+from app.storage import MemoryUploader
 
 
 def make_settings(**overrides) -> Settings:
@@ -44,3 +47,15 @@ def empty_remover(img: Image.Image) -> Image.Image:
 @pytest.fixture
 def photo_bytes() -> bytes:
     return make_photo_bytes()
+
+
+@pytest.fixture
+def uploader() -> MemoryUploader:
+    return MemoryUploader()
+
+
+@pytest.fixture
+def client(uploader):
+    app = create_app(settings=make_settings(rate_limit_per_minute=100), remover=fake_remover, uploader=uploader)
+    with TestClient(app) as test_client:
+        yield test_client

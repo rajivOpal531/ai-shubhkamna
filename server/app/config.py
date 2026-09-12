@@ -17,6 +17,8 @@ class Settings:
     jwt_validate_url: str
     max_upload_bytes: int
     model_name: str
+    max_concurrent_composites: int
+    max_field_chars: int
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -32,4 +34,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         jwt_validate_url=env.get("JWT_VALIDATE_URL", "").strip(),
         max_upload_bytes=10 * 1024 * 1024,
         model_name=env.get("REMBG_MODEL", "isnet-general-use"),
+        max_concurrent_composites=int(env.get("MAX_CONCURRENT_COMPOSITES", "2")),
+        max_field_chars=120,
     )

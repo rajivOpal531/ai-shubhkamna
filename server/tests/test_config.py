@@ -10,6 +10,8 @@ def test_defaults_when_env_is_empty():
     assert s.jwt_validate_url == ""
     assert s.max_upload_bytes == 10 * 1024 * 1024
     assert s.model_name == "isnet-general-use"
+    assert s.max_concurrent_composites == 2
+    assert s.max_field_chars == 120
 
 
 def test_parses_env_values():
@@ -23,6 +25,7 @@ def test_parses_env_values():
             "RATE_LIMIT_PER_MINUTE": "3",
             "JWT_VALIDATE_URL": "https://api.example/validate",
             "REMBG_MODEL": "u2net",
+            "MAX_CONCURRENT_COMPOSITES": "5",
         }
     )
     assert s.aws_region == "ap-south-1"
@@ -33,3 +36,4 @@ def test_parses_env_values():
     assert s.rate_limit_per_minute == 3
     assert s.jwt_validate_url == "https://api.example/validate"
     assert s.model_name == "u2net"
+    assert s.max_concurrent_composites == 5

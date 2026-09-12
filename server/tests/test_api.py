@@ -1,4 +1,5 @@
 import concurrent.futures
+import dataclasses
 import re
 import threading
 import time
@@ -284,6 +285,15 @@ def test_invalid_validate_url_fails_at_startup(bad_url):
     """Including the ones httpx rejects itself: InvalidURL must not escape create_app."""
     with pytest.raises(ValueError, match="JWT_VALIDATE_URL"):
         create_app(settings=make_settings(jwt_validate_url=bad_url))
+
+
+def test_empty_allowed_origins_fails_at_startup():
+    # make_settings() itself sets a test origin, so the override happens after via dataclasses.replace
+    # rather than by passing allowed_origins=[] straight through to make_settings (which already
+    # supplies that keyword and would collide with it).
+    settings = dataclasses.replace(make_settings(), allowed_origins=[])
+    with pytest.raises(ValueError, match="ALLOWED_ORIGINS"):
+        create_app(settings=settings)
 
 
 def test_unexpected_error_is_500_with_request_id(uploader):

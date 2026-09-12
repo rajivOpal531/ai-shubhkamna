@@ -1,4 +1,15 @@
+import pytest
+
 from app.config import load_settings
+
+
+@pytest.mark.parametrize(
+    "env_name",
+    ["RATE_LIMIT_PER_MINUTE", "RATE_LIMIT_PER_IP_PER_MINUTE", "MAX_CONCURRENT_COMPOSITES"],
+)
+def test_zero_clamped_settings_raise(env_name):
+    with pytest.raises(ValueError, match=env_name):
+        load_settings(env={env_name: "0"})
 
 
 def test_defaults_when_env_is_empty():

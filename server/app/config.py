@@ -26,18 +26,27 @@ class Settings:
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if env is None else env
     origins = [o.strip() for o in env.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+    rate_limit_per_minute = int(env.get("RATE_LIMIT_PER_MINUTE", "10"))
+    rate_limit_per_ip_per_minute = int(env.get("RATE_LIMIT_PER_IP_PER_MINUTE", "30"))
+    max_concurrent_composites = int(env.get("MAX_CONCURRENT_COMPOSITES", "2"))
+    if rate_limit_per_minute < 1:
+        raise ValueError("RATE_LIMIT_PER_MINUTE must be >= 1")
+    if rate_limit_per_ip_per_minute < 1:
+        raise ValueError("RATE_LIMIT_PER_IP_PER_MINUTE must be >= 1")
+    if max_concurrent_composites < 1:
+        raise ValueError("MAX_CONCURRENT_COMPOSITES must be >= 1")
     return Settings(
         aws_region=env.get("AWS_REGION", ""),
         s3_bucket=env.get("S3_BUCKET", ""),
         s3_prefix=env.get("S3_PREFIX", "ai-shubh").strip("/"),
         s3_public_read_acl=env.get("S3_PUBLIC_READ_ACL", "false").strip().lower() == "true",
         allowed_origins=origins,
-        rate_limit_per_minute=int(env.get("RATE_LIMIT_PER_MINUTE", "10")),
-        rate_limit_per_ip_per_minute=int(env.get("RATE_LIMIT_PER_IP_PER_MINUTE", "30")),
+        rate_limit_per_minute=rate_limit_per_minute,
+        rate_limit_per_ip_per_minute=rate_limit_per_ip_per_minute,
         rate_limit_storage_uri=env.get("RATE_LIMIT_STORAGE_URI", "").strip(),
         jwt_validate_url=env.get("JWT_VALIDATE_URL", "").strip(),
         max_upload_bytes=10 * 1024 * 1024,
         model_name=env.get("REMBG_MODEL", "isnet-general-use"),
-        max_concurrent_composites=int(env.get("MAX_CONCURRENT_COMPOSITES", "2")),
+        max_concurrent_composites=max_concurrent_composites,
         max_field_chars=120,
     )

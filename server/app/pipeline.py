@@ -12,7 +12,7 @@ from .placements import Box, Placement
 from .remover import Remover
 
 MAX_SIDE = 2000
-MAX_PIXELS = 50_000_000
+MAX_PIXELS = 24_000_000  # ~2x headroom over a 12 MP phone photo; PNG/WebP skip the JPEG draft downscale below
 ALPHA_THRESHOLD = 8
 FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Poppins-SemiBold.ttf"
 LINE_HEIGHT_FACTOR = 1.25

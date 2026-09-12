@@ -159,6 +159,9 @@ def create_app(
     placements = placements if placements is not None else load_placements()
     runtime = Runtime(remover=remover, uploader=uploader)
 
+    if not settings.allowed_origins:
+        raise ValueError("ALLOWED_ORIGINS is not set")
+
     if settings.jwt_validate_url:
         try:
             parsed = httpx.URL(settings.jwt_validate_url)

@@ -60,6 +60,12 @@ def test_all_boxes_lie_inside_the_card():
         assert re.fullmatch(r"#[0-9A-Fa-f]{6}", placement.text_color)
 
 
+def test_text_box_never_overlaps_photo_box():
+    for placement in load_placements().values():
+        tb, pb = placement.text_box, placement.photo_box
+        assert tb.right <= pb.x or pb.right <= tb.x or tb.bottom <= pb.y or pb.bottom <= tb.y, placement.template_id
+
+
 def test_load_placements_rejects_unknown_align(tmp_path):
     bad = tmp_path / "placements.json"
     bad.write_text(

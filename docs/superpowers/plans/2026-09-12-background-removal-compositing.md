@@ -1991,7 +1991,7 @@ git commit -m "docs(server): record Railway deployment URL"
 
 **Spec coverage**
 - API shape, fields, header, response, error table → Task 7 (400/401/413/415/422/429/502; 500 falls through FastAPI's default handler).
-- Pipeline steps 1–7 → Tasks 4, 5 (text drawn before the paste, per the deviation noted in `compose`'s comment; the cutout is contained in `photo_box`, which never overlaps any `text_box`, so order only matters for placeholder coverage).
+- Pipeline steps 1–7 → Tasks 4, 5 (text drawn before the paste, per the deviation noted in `compose`'s comment; the cutout is contained in `photo_box`, and `tests/test_placements.py` asserts no `text_box` overlaps a `photo_box` (card-2's caption box was narrowed to 358 px for this), so order only matters for placeholder coverage).
 - Template data: hand-measured JSON, sampled block colour, check tool, 4/5 swap already committed → Task 2.
 - Security: CORS, rate limit, bearer presence, hashed log, validation hook, body limit, secrets via env → Tasks 1, 7.
 - Frontend: composite fields + header, Processing jwt, env, global font → Tasks 9, 10, 11.

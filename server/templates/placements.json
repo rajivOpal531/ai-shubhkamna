@@ -1,6 +1,6 @@
 {
   "card-1":  { "photo_box": { "x": 468, "y": 540, "w": 612, "h": 720 }, "text_box": { "x": 100, "y": 1058, "w": 360, "h": 100 }, "text_color": "#1C1C1C", "font_size": 36, "align": "left" },
-  "card-2":  { "photo_box": { "x": 468, "y": 540, "w": 612, "h": 720 }, "text_box": { "x": 110, "y": 1068, "w": 470, "h": 90 },  "text_color": "#FFFFFF", "font_size": 36, "align": "left" },
+  "card-2":  { "photo_box": { "x": 468, "y": 540, "w": 612, "h": 720 }, "text_box": { "x": 110, "y": 1068, "w": 358, "h": 90 },  "text_color": "#FFFFFF", "font_size": 36, "align": "left" },
   "card-3":  { "photo_box": { "x": 468, "y": 540, "w": 612, "h": 720 }, "text_box": { "x": 55,  "y": 1075, "w": 320, "h": 90 },  "text_color": "#FFFFFF", "font_size": 34, "align": "left" },
   "card-4":  { "photo_box": { "x": 468, "y": 540, "w": 612, "h": 720 }, "text_box": { "x": 578, "y": 368,  "w": 440, "h": 90 },  "text_color": "#000000", "font_size": 36, "align": "left" },
   "card-5":  { "photo_box": { "x": 468, "y": 540, "w": 612, "h": 720 }, "text_box": { "x": 718, "y": 320,  "w": 300, "h": 85 },  "text_color": "#FFFFFF", "font_size": 32, "align": "left" },

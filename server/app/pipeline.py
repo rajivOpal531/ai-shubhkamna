@@ -43,11 +43,16 @@ def decode_photo(data: bytes) -> Image.Image:
         width, height = img.size
         if width * height > MAX_PIXELS:
             raise BadImageError(f"Image too large ({width}x{height} px)")
-        img.draft("RGB", (MAX_SIDE, MAX_SIDE))  # JPEG DCT downscale; must precede load()
+        img.draft("RGB", (MAX_SIDE, MAX_SIDE))  # opportunistic JPEG DCT downscale; only applies when both edges are >= 2x MAX_SIDE. MAX_PIXELS is the real guard.
         img.load()
-        img = ImageOps.exif_transpose(img)
+        ImageOps.exif_transpose(img, in_place=True)
         if max(img.size) > MAX_SIDE:
             img.thumbnail((MAX_SIDE, MAX_SIDE), Image.LANCZOS)
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+            rgba = img.convert("RGBA")
+            background = Image.new("RGB", rgba.size, (255, 255, 255))
+            background.paste(rgba, mask=rgba.getchannel("A"))
+            return background
         return img.convert("RGB")
     except BadImageError:
         raise

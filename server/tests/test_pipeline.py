@@ -69,6 +69,7 @@ def test_decode_photo_png_with_alpha_becomes_rgb():
     decoded = decode_photo(buf.getvalue())
     assert decoded.mode == "RGB"
     assert decoded.size == (20, 20)
+    assert decoded.getpixel((0, 0)) == (255, 255, 255)
 
 
 def test_crop_to_subject_returns_opaque_bbox():
@@ -88,6 +89,7 @@ def test_crop_to_subject_converts_rgb_to_rgba():
     photo = decode_photo(make_photo_bytes(600, 800))
     assert photo.mode == "RGB"
     cutout = crop_to_subject(photo)
+    assert cutout.mode == "RGBA"
     assert cutout.size == photo.size
 
 
@@ -105,6 +107,7 @@ def test_crop_to_subject_threshold_boundary():
 
 def test_fit_bottom_center_scales_tall_image_by_height():
     fitted = fit_bottom_center((240, 640), Box(x=468, y=540, w=612, h=720))
+    assert isinstance(fitted, Box)
     assert fitted.h == 720
     assert fitted.w == 270
     assert fitted.y == 540
@@ -123,3 +126,22 @@ def test_fit_bottom_center_upscales_small_cutouts():
     fitted = fit_bottom_center((50, 50), Box(x=468, y=540, w=612, h=720))
     assert fitted.w == fitted.h == 612
     assert fitted.y == 540 + 720 - 612
+
+
+def test_decode_photo_rejects_oversized_images_before_decoding_pixels(monkeypatch):
+    # Build the fixture bytes first: ImageDraw.rectangle() and Image.save("JPEG") both call
+    # Image.load() internally, so constructing them under the spy would pollute the count.
+    data = make_photo_bytes(width=100, height=100)
+
+    calls: list[int] = []
+    original_load = Image.Image.load
+
+    def spying_load(self, *args, **kwargs):
+        calls.append(1)
+        return original_load(self, *args, **kwargs)
+
+    monkeypatch.setattr(Image.Image, "load", spying_load)
+    monkeypatch.setattr("app.pipeline.MAX_PIXELS", 1000)
+    with pytest.raises(BadImageError, match="too large"):
+        decode_photo(data)
+    assert calls == []

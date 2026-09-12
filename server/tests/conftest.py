@@ -25,7 +25,7 @@ def make_photo_bytes(width: int = 600, height: int = 800, fmt: str = "JPEG") -> 
 
 
 def fake_remover(img: Image.Image) -> Image.Image:
-    """Stand-in for rembg: keeps the centre 40 % width x 80 % height opaque, everything else transparent."""
+    """Stand-in for rembg: a horizontally centred, bottom-anchored rectangle (30-70 % of width, 20-100 % of height) is opaque; everything else transparent."""
     width, height = img.size
     rgba = img.convert("RGBA")
     mask = Image.new("L", img.size, 0)

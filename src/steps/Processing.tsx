@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { compositePhoto } from '../services/composite';
 import type { CompositeResult, Profile, Template } from '../types';
 import './Processing.css';
@@ -14,14 +14,16 @@ type Props = {
 export function Processing({ photo, template, profile, onComposited, onError }: Props) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const latest = useRef({ profile, onComposited });
+  latest.current = { profile, onComposited };
 
   useEffect(() => {
     let cancelled = false;
     setFailed(false);
 
-    compositePhoto({ photo, templateId: template.id, templateImageUrl: template.image, profile })
+    compositePhoto({ photo, templateId: template.id, templateImageUrl: template.image, profile: latest.current.profile })
       .then((result) => {
-        if (!cancelled) onComposited(result);
+        if (!cancelled) latest.current.onComposited(result);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -30,7 +32,8 @@ export function Processing({ photo, template, profile, onComposited, onError }: 
     return () => {
       cancelled = true;
     };
-  }, [attempt, photo, template, profile, onComposited]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt, photo, template.id, template.image]);
 
   if (failed) {
     return (

@@ -46,4 +46,18 @@ describe('Processing', () => {
     await userEvent.click(await screen.findByRole('button', { name: /retake photo/i }));
     expect(onError).toHaveBeenCalled();
   });
+
+  it('does not re-run compositing when only profile/onComposited identity changes', async () => {
+    compositePhotoMock.mockResolvedValue({ imageBlob: new Blob(['x']) });
+    const { rerender } = render(
+      <Processing photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />,
+    );
+    await waitFor(() => expect(compositePhotoMock).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <Processing photo={PHOTO} template={TEMPLATE} profile={{ ...PROFILE }} onComposited={vi.fn()} onError={vi.fn()} />,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(compositePhotoMock).toHaveBeenCalledTimes(1);
+  });
 });

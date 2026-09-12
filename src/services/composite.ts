@@ -47,6 +47,14 @@ async function realCompositePhoto({
   jwt,
   signal,
 }: CompositeParams): Promise<CompositeResult> {
+  if (!config.compositeUrl || config.compositeUrl.includes('<')) {
+    throw new CompositeError(
+      'VITE_COMPOSITE_URL is not configured (set it, or set VITE_USE_MOCK_COMPOSITE=true)',
+      null,
+      null,
+    );
+  }
+
   const form = new FormData();
   form.append('template', templateId);
   form.append('photo', photo, 'photo.jpg');

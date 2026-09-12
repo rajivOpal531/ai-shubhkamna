@@ -1,4 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// `config` reads import.meta.env at module load time, so under vitest it would otherwise
+// resolve compositeUrl to '' (no VITE_COMPOSITE_URL set). Mock it here so the real-path
+// tests below exercise a configured URL; the "unconfigured" guard itself is covered
+// separately in composite.config.test.ts, which mocks this same module with an empty/
+// placeholder URL per test.
+vi.mock('../config', () => ({
+  config: {
+    compositeUrl: 'https://svc.example/composite',
+    useMockComposite: true,
+  },
+}));
+
 import { compositePhoto, CompositeError } from './composite';
 import { config } from '../config';
 import type { Profile } from '../types';

@@ -32,6 +32,7 @@ def main(out_dir: Path, placements: dict[str, Placement] | None = None) -> int:
             continue
         source_path = vector_path(template_id)
         if not source_path.is_file():
+            print(f"note: {template_id}: no silhouette card at {source_path}, drew on clean card")
             source_path = placement.template_path
         card = Image.open(source_path).convert("RGB")
         if card.size != CARD_SIZE:
@@ -57,7 +58,10 @@ def main(out_dir: Path, placements: dict[str, Placement] | None = None) -> int:
             sheet.paste(tile, ((i % cols) * 360, (i // cols) * 420))
         sheet.save(out_dir / "contact-sheet.jpg", quality=88)
 
-    print(f"wrote {len(tiles)} cards + contact-sheet.jpg to {out_dir}")
+    if tiles:
+        print(f"wrote {len(tiles)} cards + contact-sheet.jpg to {out_dir}")
+    else:
+        print(f"wrote 0 cards to {out_dir} (no contact sheet)")
     return 1 if problems else 0
 
 

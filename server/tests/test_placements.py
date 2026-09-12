@@ -93,3 +93,16 @@ def test_load_placements_rejects_non_object_top_level(tmp_path):
     bad.write_text("[]", encoding="utf-8")
     with pytest.raises(ValueError, match="object"):
         load_placements(bad)
+
+
+def test_load_placements_rejects_non_object_entry(tmp_path):
+    bad = tmp_path / "placements.json"
+    bad.write_text(json.dumps({"card-1": "oops"}), encoding="utf-8")
+    with pytest.raises(ValueError, match="card-1"):
+        load_placements(bad)
+
+
+def test_load_placements_rejects_non_string_text_color(tmp_path):
+    entry = {**VALID_ENTRY, "text_color": 123}
+    with pytest.raises(ValueError, match="text_color"):
+        _load(tmp_path, entry)

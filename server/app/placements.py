@@ -69,13 +69,16 @@ def load_placements(path: Path = PLACEMENTS_PATH) -> dict[str, Placement]:
     placements: dict[str, Placement] = {}
     for template_id, entry in raw.items():
         try:
+            if not isinstance(entry, dict):
+                raise ValueError("entry must be an object")
+
             align = entry.get("align", "left")
             if align not in ALIGNMENTS:
                 raise ValueError(f"align must be one of {ALIGNMENTS}, got {align!r}")
 
             text_color = entry["text_color"]
-            if not HEX_COLOR.fullmatch(text_color):
-                raise ValueError(f"text_color must be a hex color, got {text_color!r}")
+            if not isinstance(text_color, str) or not HEX_COLOR.fullmatch(text_color):
+                raise ValueError("text_color must be #RRGGBB")
 
             font_size = entry["font_size"]
             if not isinstance(font_size, int) or isinstance(font_size, bool) or font_size <= 0:
@@ -96,6 +99,6 @@ def load_placements(path: Path = PLACEMENTS_PATH) -> dict[str, Placement]:
                 font_size=font_size,
                 align=align,
             )
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise ValueError(f"{template_id}: bad placement entry ({exc})") from exc
     return placements

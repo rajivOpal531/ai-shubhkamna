@@ -3,29 +3,24 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, Callable
+from dataclasses import dataclass
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image
 
 from .config import Settings, load_settings
+from .remover import Remover, make_remover
 
 log = logging.getLogger("ai-shubh")
 
-Remover = Callable[[Image.Image], Image.Image]
 
+@dataclass
+class Runtime:
+    """Heavy objects built once per process (in lifespan) or injected by tests."""
 
-def make_remover(model_name: str) -> Remover:
-    """Build the real rembg remover. Imported lazily so tests never load the model."""
-    from rembg import new_session, remove  # noqa: WPS433 (lazy on purpose)
-
-    session = new_session(model_name)
-
-    def _remove(img: Image.Image) -> Image.Image:
-        return remove(img, session=session).convert("RGBA")
-
-    return _remove
+    remover: Remover | None = None
+    uploader: Any | None = None  # becomes storage.Uploader once storage.py exists
 
 
 def create_app(
@@ -33,13 +28,14 @@ def create_app(
     remover: Remover | None = None,
     uploader: Any | None = None,
 ) -> FastAPI:
-    settings = settings or load_settings()
-    runtime: dict[str, Any] = {"remover": remover, "uploader": uploader}
+    """App factory. Run with `uvicorn app.main:create_app --factory`."""
+    settings = settings if settings is not None else load_settings()
+    runtime = Runtime(remover=remover, uploader=uploader)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        if runtime["remover"] is None:
-            runtime["remover"] = make_remover(settings.model_name)
+        if runtime.remover is None:
+            runtime.remover = make_remover(settings.model_name)
         yield
 
     app = FastAPI(title="AI Shubhkamna compositing", lifespan=lifespan)
@@ -52,9 +48,6 @@ def create_app(
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        return {"status": "ok", "model_loaded": runtime["remover"] is not None}
+        return {"status": "ok", "model_loaded": runtime.remover is not None}
 
     return app
-
-
-app = create_app()

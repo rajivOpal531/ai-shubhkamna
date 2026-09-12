@@ -1,26 +1,35 @@
 from fastapi.testclient import TestClient
 
-from app.config import Settings
 from app.main import create_app
-
-
-def _settings() -> Settings:
-    return Settings(
-        aws_region="ap-south-1",
-        s3_bucket="b",
-        s3_prefix="p",
-        s3_public_read_acl=False,
-        allowed_origins=["https://app.example"],
-        rate_limit_per_minute=10,
-        jwt_validate_url="",
-        max_upload_bytes=10 * 1024 * 1024,
-        model_name="isnet-general-use",
-    )
+from tests.conftest import make_settings
 
 
 def test_health_reports_model_loaded_when_remover_injected():
-    app = create_app(settings=_settings(), remover=lambda img: img, uploader=object())
+    app = create_app(settings=make_settings(), remover=lambda img: img)
     with TestClient(app) as client:
         response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "model_loaded": True}
+
+
+def test_lifespan_builds_remover_from_settings_when_none_injected(monkeypatch):
+    built: list[str] = []
+
+    def fake_make_remover(model_name: str):
+        built.append(model_name)
+        return lambda img: img
+
+    monkeypatch.setattr("app.main.make_remover", fake_make_remover)
+    app = create_app(settings=make_settings(model_name="u2net"))
+    with TestClient(app) as client:
+        assert client.get("/health").json()["model_loaded"] is True
+    assert built == ["u2net"]
+
+
+def test_cors_allows_configured_origin_and_rejects_others():
+    app = create_app(settings=make_settings(), remover=lambda img: img)
+    with TestClient(app) as client:
+        allowed = client.get("/health", headers={"Origin": "https://app.example"})
+        denied = client.get("/health", headers={"Origin": "https://evil.example"})
+    assert allowed.headers["access-control-allow-origin"] == "https://app.example"
+    assert "access-control-allow-origin" not in denied.headers

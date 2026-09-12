@@ -72,11 +72,12 @@ async function realCompositePhoto({
   form.append('state', profile.state);
 
   const controller = new AbortController();
+  const onAbort = () => controller.abort();
   const timer = setTimeout(() => controller.abort(), COMPOSITE_TIMEOUT_MS);
   if (signal?.aborted) controller.abort();
-  signal?.addEventListener('abort', () => controller.abort(), { once: true });
+  signal?.addEventListener('abort', onAbort, { once: true });
 
-  let response: Response;
+  let response: Response | undefined;
   try {
     response = await fetch(config.compositeUrl, {
       method: 'POST',
@@ -84,29 +85,38 @@ async function realCompositePhoto({
       headers: { Authorization: `Bearer ${jwt}` },
       signal: controller.signal,
     });
-  } catch {
+
+    if (!response.ok) {
+      throw new CompositeError(
+        `Compositing failed with status ${response.status}`,
+        response.status,
+        response.headers.get('X-Request-Id'),
+      );
+    }
+
+    const data = (await response.json()) as { imageUrl?: unknown };
+    if (typeof data.imageUrl !== 'string' || !data.imageUrl) {
+      throw new CompositeError(
+        'Compositing response had no imageUrl',
+        response.status,
+        response.headers.get('X-Request-Id'),
+      );
+    }
+    return { imageUrl: data.imageUrl };
+  } catch (err) {
+    if (err instanceof CompositeError) throw err;
+    if (response) {
+      throw new CompositeError(
+        'Compositing response was not valid JSON',
+        response.status,
+        response.headers.get('X-Request-Id'),
+      );
+    }
     throw new CompositeError('Compositing request failed or timed out', null, null);
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
-
-  if (!response.ok) {
-    throw new CompositeError(
-      `Compositing failed with status ${response.status}`,
-      response.status,
-      response.headers.get('X-Request-Id'),
-    );
-  }
-
-  const data = (await response.json()) as { imageUrl?: unknown };
-  if (typeof data.imageUrl !== 'string' || !data.imageUrl) {
-    throw new CompositeError(
-      'Compositing response had no imageUrl',
-      response.status,
-      response.headers.get('X-Request-Id'),
-    );
-  }
-  return { imageUrl: data.imageUrl };
 }
 
 // Visual stand-in only: overlays the user's photo onto the chosen template so the flow is

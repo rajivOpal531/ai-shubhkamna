@@ -131,16 +131,20 @@ describe('compositePhoto', () => {
   });
 
   it('propagates abort from the caller signal to the fetch signal', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      json: async () => ({ imageUrl: 'https://example.com/x.jpg' }),
-    });
+    const fetchMock = vi.fn().mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal!.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        }),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const controller = new AbortController();
 
-    await compositePhoto({ ...PARAMS, signal: controller.signal }, { useMock: false });
+    const pending = compositePhoto({ ...PARAMS, signal: controller.signal }, { useMock: false }).catch(
+      (err) => err,
+    );
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.signal).not.toBe(controller.signal);
@@ -149,6 +153,9 @@ describe('compositePhoto', () => {
     controller.abort();
 
     expect(init.signal!.aborted).toBe(true);
+
+    const error = await pending;
+    expect(error).toBeInstanceOf(CompositeError);
   });
 
   it('arms the timeout even when a caller signal is supplied, aborting fetch after COMPOSITE_TIMEOUT_MS', async () => {
@@ -168,13 +175,52 @@ describe('compositePhoto', () => {
       (err) => err,
     );
 
-    await vi.advanceTimersByTimeAsync(COMPOSITE_TIMEOUT_MS + 1);
+    await vi.advanceTimersByTimeAsync(COMPOSITE_TIMEOUT_MS - 1);
+    const [, initBeforeTimeout] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(initBeforeTimeout.signal!.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(2);
     const error = await pending;
 
     expect(error).toBeInstanceOf(CompositeError);
     expect((error as CompositeError).status).toBeNull();
     expect((error as CompositeError).kind).toBe('network');
     expect((error as CompositeError).retryable).toBe(true);
+  });
+
+  it('rejects with a typed CompositeError when the response body is not valid JSON', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: (key: string) => (key === 'X-Request-Id' ? 'r1' : null) },
+        json: async () => {
+          throw new SyntaxError('bad');
+        },
+      }),
+    );
+
+    const error = await compositePhoto(PARAMS, { useMock: false }).catch((err) => err);
+    expect(error).toBeInstanceOf(CompositeError);
+    expect((error as CompositeError).message).toContain('JSON');
+    expect((error as CompositeError).status).toBe(200);
+    expect((error as CompositeError).requestId).toBe('r1');
+  });
+
+  it('leaves no lingering effect from the caller signal after a successful call', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ imageUrl: 'https://example.com/x.jpg' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    await compositePhoto({ ...PARAMS, signal: controller.signal }, { useMock: false });
+
+    expect(() => controller.abort()).not.toThrow();
   });
 
   it('draws the photo at the expected offset and size on the mock canvas', async () => {

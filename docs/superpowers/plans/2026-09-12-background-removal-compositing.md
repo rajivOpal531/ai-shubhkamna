@@ -810,6 +810,8 @@ git add server/app/pipeline.py server/tests/conftest.py server/tests/test_pipeli
 git commit -m "feat(server): photo decode, subject crop, and fit maths"
 ```
 
+Review note (2026-09-12): after code review, `decode_photo` gained a `MAX_PIXELS = 50_000_000` cap checked before `load()`, a `draft("RGB", (MAX_SIDE, MAX_SIDE))` call so JPEGs decode downscaled, and the whole decode path sits inside the `try` so any Pillow failure becomes `BadImageError`; `crop_to_subject` converts non-RGBA input; `fit_bottom_center` returns a `Box` instead of a tuple (Task 5's `compose` uses `fitted.x/.y/.w/.h`).
+
 ---
 
 ### Task 5: Pipeline — text block and compose
@@ -964,9 +966,9 @@ def compose(
     cutout = crop_to_subject(remover(photo))
     card = Image.open(placement.template_path).convert("RGB")
     draw_text_block(card, placement, fields, font_path)  # text first so the cutout can overlap it like the design
-    x, y, w, h = fit_bottom_center(cutout.size, placement.photo_box)
-    cutout = cutout.resize((w, h), Image.LANCZOS)
-    card.paste(cutout, (x, y), cutout)
+    fitted = fit_bottom_center(cutout.size, placement.photo_box)
+    cutout = cutout.resize((fitted.w, fitted.h), Image.LANCZOS)
+    card.paste(cutout, (fitted.x, fitted.y), cutout)
     buffer = io.BytesIO()
     card.save(buffer, "JPEG", quality=90)
     return buffer.getvalue()

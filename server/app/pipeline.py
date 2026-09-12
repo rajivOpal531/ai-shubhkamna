@@ -18,7 +18,7 @@ FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Poppins-SemiBold.ttf"
 LINE_HEIGHT_FACTOR = 1.25
 MIN_FONT_SCALE = 0.7
 
-Font = ImageFont.FreeTypeFont | ImageFont.ImageFont
+Font = ImageFont.FreeTypeFont
 
 
 class BadImageError(ValueError):
@@ -121,11 +121,13 @@ def _truncate(draw: ImageDraw.ImageDraw, text: str, font: Font, max_width: int) 
             lo = mid
         else:
             hi = mid - 1
+    if lo == 0 and draw.textlength("…", font=font) > max_width:
+        return ""
     return text[:lo] + "…"
 
 
 def _fit_font(draw: ImageDraw.ImageDraw, lines: list[str], font_path: Path, size: int, max_width: int) -> Font:
-    """Largest common size in [size * MIN_FONT_SCALE, size] at which every line fits; the caller truncates what still doesn't."""
+    """Single linear estimate of the largest common size in [size * MIN_FONT_SCALE, size] for the widest line; the caller still truncates anything that overflows at the floor."""
     font = _load_font(font_path, size)
     widest = max((draw.textlength(line, font=font) for line in lines), default=0)
     if widest <= max_width:

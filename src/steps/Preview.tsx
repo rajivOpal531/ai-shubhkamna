@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CompositeResult } from '../types';
 import './Preview.css';
 
@@ -22,12 +22,28 @@ type Props = {
 
 export function Preview({ composited, wish, onWishChange, posting, postError, onRetake, onPost }: Props) {
   const [inspireIndex, setInspireIndex] = useState(0);
-  const previewSrc = composited.imageUrl ?? (composited.imageBlob ? URL.createObjectURL(composited.imageBlob) : '');
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!composited.imageBlob) {
+      setBlobUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(composited.imageBlob);
+    setBlobUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [composited.imageBlob]);
+
+  const previewSrc = composited.imageUrl ?? blobUrl ?? '';
 
   function handleInspireMe() {
     const message = INSPIRE_MESSAGES[inspireIndex % INSPIRE_MESSAGES.length];
-    setInspireIndex((value) => value + 1);
-    onWishChange(message.slice(0, WISH_MAX_LENGTH));
+    const nextIndex = inspireIndex + 1;
+    const isUserEditedText = wish.length > 0 && !INSPIRE_MESSAGES.includes(wish);
+    if (!isUserEditedText) {
+      onWishChange(message.slice(0, WISH_MAX_LENGTH));
+    }
+    setInspireIndex(nextIndex);
   }
 
   return (
@@ -50,7 +66,11 @@ export function Preview({ composited, wish, onWishChange, posting, postError, on
         {wish.length}/{WISH_MAX_LENGTH}
       </p>
 
-      {postError && <p className="preview__error">{postError}</p>}
+      {postError && (
+        <p className="preview__error" role="alert">
+          {postError}
+        </p>
+      )}
 
       <div className="preview__actions">
         <button type="button" onClick={onRetake} disabled={posting}>

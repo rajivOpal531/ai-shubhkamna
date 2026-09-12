@@ -67,6 +67,7 @@ export function Landing({
             if (file) {
               onFileSelected(file);
             }
+            event.target.value = '';
           }}
         />
         <button type="button" onClick={onCapture}>

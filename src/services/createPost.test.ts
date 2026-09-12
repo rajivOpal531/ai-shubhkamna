@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { config } from '../config';
+
+// Distinct, non-empty literal endpoints so the url assertions below actually discriminate
+// between the two functions - comparing against config.* directly would be vacuous, since
+// that's the same source the code under test reads from (and in this environment, with no
+// .env/.env.local present, both config values fall back to the same '').
+vi.mock('../config', () => ({
+  config: {
+    createPostByUrlEndpoint: 'https://example.test/createPostByImageUrl',
+    createPostFileEndpoint: 'https://example.test/createPost',
+  },
+}));
+
 import { createPostByImageUrl, createPostWithFile } from './createPost';
 
 describe('createPostByImageUrl', () => {
@@ -20,7 +31,7 @@ describe('createPostByImageUrl', () => {
 
     expect(result).toEqual({ ok: true, status: 200 });
     const [url, requestInit] = fetchSpy.mock.calls[0];
-    expect(url).toBe(config.createPostByUrlEndpoint);
+    expect(url).toBe('https://example.test/createPostByImageUrl');
     expect(requestInit.method).toBe('POST');
     expect(requestInit.headers).toEqual({ Authorization: 'Bearer tok' });
 
@@ -73,7 +84,7 @@ describe('createPostWithFile', () => {
 
     expect(result).toEqual({ ok: true, status: 200 });
     const [url, requestInit] = fetchSpy.mock.calls[0];
-    expect(url).toBe(config.createPostFileEndpoint);
+    expect(url).toBe('https://example.test/createPost');
     const form = requestInit.body as FormData;
     expect(form.get('text')).toBe('Happy Birthday!');
     expect(form.get('moduleType')).toBe('AI Shubh');

@@ -245,6 +245,14 @@ def test_truncate_is_fast_on_long_input():
     assert time.perf_counter() - start < 0.5
 
 
+def test_truncate_returns_empty_when_even_ellipsis_overflows():
+    img = Image.new("RGB", (300, 100), "white")
+    draw = ImageDraw.Draw(img)
+    font = _load_font(FONT_PATH, 24)
+
+    assert _truncate(draw, "Hello", font, 3) == ""
+
+
 def test_fit_font_shrinks_but_not_below_floor():
     img = Image.new("RGB", (300, 300), "white")
     draw = ImageDraw.Draw(img)

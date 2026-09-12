@@ -1,11 +1,20 @@
 """Where finished cards go. S3 in production, memory in tests."""
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any, Protocol
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
+
+S3_CONFIG = Config(
+    connect_timeout=5,
+    read_timeout=30,  # max body is 10 MB; 30 s is generous
+    retries={"max_attempts": 3, "mode": "standard"},
+)
+PREFIX_PATTERN = re.compile(r"[A-Za-z0-9._\-/]*")
 
 
 class UploadError(RuntimeError):
@@ -17,20 +26,40 @@ class Uploader(Protocol):
         ...
 
 
+class S3ClientLike(Protocol):
+    def put_object(self, **kwargs: Any) -> Any: ...
+
+
 class S3Uploader:
+    """Uploads JPEGs to S3 and returns a virtual-hosted-style public URL.
+
+    The bucket must live in `region`; S3 silently follows cross-region redirects on
+    PUT but the virtual-hosted URL returned here would then be wrong.
+    """
+
     def __init__(
         self,
         bucket: str,
         region: str,
         prefix: str = "ai-shubh",
         public_read_acl: bool = False,
-        client: Any | None = None,
+        client: S3ClientLike | None = None,
     ) -> None:
+        if not bucket:
+            raise ValueError("S3_BUCKET is not set")
+        if "." in bucket:
+            raise ValueError("S3_BUCKET must be DNS-compatible (no dots) for virtual-hosted URLs")
+        if not region:
+            raise ValueError("AWS_REGION is not set")
+        if not PREFIX_PATTERN.fullmatch(prefix):
+            raise ValueError("S3_PREFIX may only contain letters, digits, '.', '_', '-' and '/'")
         self.bucket = bucket
         self.region = region
         self.prefix = prefix.strip("/")
         self.public_read_acl = public_read_acl
-        self.client = client or boto3.client("s3", region_name=region)
+        self.client: S3ClientLike = client if client is not None else boto3.client(
+            "s3", region_name=region, config=S3_CONFIG
+        )
 
     def upload_jpeg(self, data: bytes) -> str:
         name = f"{uuid.uuid4().hex}.jpg"

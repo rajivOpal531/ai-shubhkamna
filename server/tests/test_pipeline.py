@@ -1,17 +1,21 @@
 import io
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from app.pipeline import (
     MAX_SIDE,
     BadImageError,
     NoSubjectError,
+    TextFields,
+    compose,
     crop_to_subject,
     decode_photo,
+    draw_text_block,
     fit_bottom_center,
+    text_lines,
 )
-from app.placements import Box
+from app.placements import Box, Placement, load_placements
 from tests.conftest import empty_remover, fake_remover, make_photo_bytes
 
 
@@ -145,3 +149,80 @@ def test_decode_photo_rejects_oversized_images_before_decoding_pixels(monkeypatc
     with pytest.raises(BadImageError, match="too large"):
         decode_photo(data)
     assert calls == []
+
+
+def test_text_lines_skips_blank_fields():
+    assert text_lines(TextFields()) == []
+    assert text_lines(TextFields(name=" Rajiv ")) == ["-Rajiv"]
+    assert text_lines(TextFields(name="Rajiv", state="Bihar")) == ["-Rajiv", "Bihar"]
+    assert text_lines(TextFields(name="Rajiv", constituency="Patna Sahib", state="Bihar")) == [
+        "-Rajiv",
+        "Patna Sahib, Bihar",
+    ]
+
+
+def _synthetic_placement(align: str = "left", text_color: str = "#FF0000") -> Placement:
+    return Placement(
+        template_id="synthetic",
+        photo_box=Box(x=100, y=100, w=100, h=100),
+        text_box=Box(x=20, y=20, w=160, h=60),
+        text_color=text_color,
+        font_size=24,
+        align=align,
+    )
+
+
+def test_draw_text_block_covers_placeholder_and_draws_text_color():
+    card = Image.new("RGB", (300, 300), (30, 60, 200))
+    ImageDraw.Draw(card).text((25, 25), "-Your name", fill=(255, 255, 255))  # fake placeholder
+    placement = _synthetic_placement()
+
+    draw_text_block(card, placement, TextFields())
+    box_pixels = set(card.crop((20, 20, 180, 80)).getdata())
+    assert box_pixels == {(30, 60, 200)}, "empty fields must still wipe the placeholder"
+
+    draw_text_block(card, placement, TextFields(name="Rajiv"))
+    assert (255, 0, 0) in set(card.crop((20, 20, 180, 80)).getdata())
+
+
+def test_draw_text_block_right_aligns_when_requested():
+    card = Image.new("RGB", (300, 300), (255, 255, 255))
+    placement = _synthetic_placement(align="right", text_color="#000000")
+    draw_text_block(card, placement, TextFields(name="Ab"))
+    cols_with_ink = [
+        x for x in range(20, 180) if any(card.getpixel((x, y)) != (255, 255, 255) for y in range(20, 80))
+    ]
+    assert cols_with_ink, "expected some text ink"
+    assert min(cols_with_ink) > 100, "short right-aligned text should sit in the right half of the box"
+
+
+def test_draw_text_block_truncates_long_lines_with_ellipsis():
+    card = Image.new("RGB", (300, 300), (255, 255, 255))
+    placement = _synthetic_placement(text_color="#000000")
+    draw_text_block(card, placement, TextFields(name="A" * 200))
+    assert all(card.getpixel((x, 40)) == (255, 255, 255) for x in range(181, 300)), "ink must stay inside the box"
+
+
+def test_compose_end_to_end_produces_a_jpeg_of_card_size(photo_bytes):
+    placement = load_placements()["card-2"]
+    out = compose(photo_bytes, placement, TextFields(name="Rajiv", constituency="Patna", state="Bihar"), fake_remover)
+    img = Image.open(io.BytesIO(out))
+    assert img.format == "JPEG"
+    assert img.size == (1080, 1260)
+
+
+def test_compose_pastes_cutout_inside_photo_box(photo_bytes):
+    placement = load_placements()["card-15"]
+    out = compose(photo_bytes, placement, TextFields(), fake_remover)
+    img = Image.open(io.BytesIO(out)).convert("RGB")
+    pb = placement.photo_box
+    # fake cutout is a flat (230,200,180)-ish rectangle; sample its centre-bottom
+    cx, cy = pb.x + pb.w // 2, pb.bottom - 10
+    r, g, b = img.getpixel((cx, cy))
+    assert abs(r - 230) < 20 and abs(g - 200) < 20 and abs(b - 180) < 20
+
+
+def test_compose_raises_no_subject_when_remover_returns_transparent(photo_bytes):
+    placement = load_placements()["card-1"]
+    with pytest.raises(NoSubjectError):
+        compose(photo_bytes, placement, TextFields(), empty_remover)

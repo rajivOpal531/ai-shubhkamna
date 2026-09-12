@@ -6,15 +6,14 @@ type CompositeParams = {
   templateId: string;
   templateImageUrl: string;
   profile: Profile;
+  jwt: string;
 };
 
 type Options = {
   useMock?: boolean;
 };
 
-// Real endpoint is not available yet (docs/superpowers/specs/2026-09-12-ai-shubhkamna-design.md
-// "Open integrations"). Field names below (`template`, `photo`, response `imageUrl`) are
-// provisional pending the real contract - confirm against the actual endpoint once provided.
+// Real endpoint: server/README.md ("API"). Multipart fields + bearer header; returns { imageUrl }.
 export async function compositePhoto(
   params: CompositeParams,
   { useMock = config.useMockComposite }: Options = {},
@@ -22,12 +21,19 @@ export async function compositePhoto(
   return useMock ? mockCompositePhoto(params) : realCompositePhoto(params);
 }
 
-async function realCompositePhoto({ photo, templateId }: CompositeParams): Promise<CompositeResult> {
+async function realCompositePhoto({ photo, templateId, profile, jwt }: CompositeParams): Promise<CompositeResult> {
   const form = new FormData();
   form.append('template', templateId);
   form.append('photo', photo, 'photo.jpg');
+  form.append('name', profile.username);
+  form.append('constituency', profile.constituency);
+  form.append('state', profile.state);
 
-  const response = await fetch(config.compositeUrl, { method: 'POST', body: form });
+  const response = await fetch(config.compositeUrl, {
+    method: 'POST',
+    body: form,
+    headers: { Authorization: `Bearer ${jwt}` },
+  });
   if (!response.ok) {
     throw new Error(`Compositing failed with status ${response.status}`);
   }

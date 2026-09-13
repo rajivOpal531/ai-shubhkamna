@@ -16,7 +16,7 @@ MAX_PIXELS = 24_000_000  # ~2x headroom over a 12 MP phone photo; PNG/WebP skip 
 ALPHA_THRESHOLD = 8
 FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Poppins-SemiBold.ttf"
 LINE_HEIGHT_FACTOR = 1.25
-MIN_FONT_SCALE = 0.7
+MIN_FONT_SCALE = 0.6
 
 Font = ImageFont.FreeTypeFont
 
@@ -126,15 +126,57 @@ def _truncate(draw: ImageDraw.ImageDraw, text: str, font: Font, max_width: int) 
     return text[:lo] + "…"
 
 
-def _fit_font(draw: ImageDraw.ImageDraw, lines: list[str], font_path: Path, size: int, max_width: int) -> Font:
-    """Single linear estimate of the largest common size in [size * MIN_FONT_SCALE, size] for the widest line; the caller still truncates anything that overflows at the floor."""
+def _fit_font(
+    draw: ImageDraw.ImageDraw, lines: list[str], font_path: Path, size: int, max_width: int, max_height: int
+) -> Font:
+    """Single linear estimate of the largest common size in [size * MIN_FONT_SCALE, size] that fits both
+    the widest line and the block's height; the caller still truncates anything that overflows at the floor."""
     font = _load_font(font_path, size)
     widest = max((draw.textlength(line, font=font) for line in lines), default=0)
-    if widest <= max_width:
-        return font
+    width_estimate = size if widest <= max_width or widest == 0 else int(size * max_width / widest)
+    cap = max(1, int(max_height / (max(1, len(lines)) * LINE_HEIGHT_FACTOR)))
     floor = max(1, round(size * MIN_FONT_SCALE))
-    candidate = max(floor, int(size * max_width / widest))
+    candidate = max(floor, min(size, cap, width_estimate))
+    if candidate == size:
+        return font
     return _load_font(font_path, candidate)
+
+
+def layout_caption(
+    draw: ImageDraw.ImageDraw, fields: TextFields, font_path: Path, size: int, box: Box
+) -> tuple[list[str], Font]:
+    """Pick the caption lines and font size for `box`.
+
+    Tries the normal `text_lines` layout first. If any line still overflows the box width at
+    the fitted size, and both constituency and state are present (so the location line is
+    "<constituency>, <state>"), also tries splitting the location across two lines
+    ("Constituency," / "State") and refitting. Whichever layout overflows fewer lines wins;
+    a tie goes to the larger font.
+    """
+    lines = text_lines(fields)
+    if not lines:
+        return lines, _load_font(font_path, size)
+
+    font = _fit_font(draw, lines, font_path, size, box.w, box.h)
+    overflowing = sum(1 for line in lines if draw.textlength(line, font=font) > box.w)
+
+    constituency = _clean(fields.constituency)
+    state = _clean(fields.state)
+    if overflowing and constituency and state:
+        split: list[str] = []
+        name = _clean(fields.name)
+        if name:
+            split.append(f"-{name}")
+        split.append(f"{constituency},")
+        split.append(state)
+
+        split_font = _fit_font(draw, split, font_path, size, box.w, box.h)
+        split_overflowing = sum(1 for line in split if draw.textlength(line, font=split_font) > box.w)
+
+        if (split_overflowing, -split_font.size) < (overflowing, -font.size):
+            return split, split_font
+
+    return lines, font
 
 
 def _sample_background(card: Image.Image, tb: Box, pad: int = 4) -> tuple[int, int, int]:
@@ -149,10 +191,11 @@ def draw_text_block(card: Image.Image, placement: Placement, fields: TextFields,
     tb = placement.text_box
     draw = ImageDraw.Draw(card)
     draw.rectangle((tb.x, tb.y, tb.right - 1, tb.bottom - 1), fill=_sample_background(card, tb))
-    lines = text_lines(fields)
+    lines, font = layout_caption(draw, fields, font_path, placement.font_size, tb)
     if not lines:
         return
-    font = _fit_font(draw, lines, font_path, placement.font_size, tb.w)
+    # The vertical cap in _fit_font already bounds font.size so that
+    # len(lines) * round(font.size * LINE_HEIGHT_FACTOR) fits within tb.h.
     line_height = round(font.size * LINE_HEIGHT_FACTOR)
     y = tb.y
     for line in lines:

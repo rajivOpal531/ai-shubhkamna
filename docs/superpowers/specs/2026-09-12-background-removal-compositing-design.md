@@ -107,7 +107,7 @@ Runs in order, all in memory, no temp files:
    bundled font at `font_size`:
    - line 1: `-{name}` (only if `name` non-blank)
    - line 2: `{constituency}, {state}` — whichever parts are non-blank, joined with ", "
-   Lines are left-aligned to the box, top-anchored, or right-aligned when the placement's `align` is `right` (card-15), line height = 1.25 × font size. Text wider than the box is first shrunk to a common size no smaller than 70 % of `font_size`; anything still wider is truncated with "…". If both lines are blank the box is still filled, so
+   Lines are left-aligned to the box, top-anchored, or right-aligned when the placement's `align` is `right` (card-15), line height = 1.25 × font size. Text wider than the box is first shrunk to a common size no smaller than 60 % of `font_size`; anything still wider is truncated with "…". If the location line still overflows and both constituency and state are present, it wraps to two lines (`Constituency,` / `State`) and the size is refitted so all three lines fit the box height. If both lines are blank the box is still filled, so
    the placeholder never leaks through.
 7. **Encode** JPEG, quality 90, and hand the bytes to storage.
 

@@ -21,6 +21,7 @@ from app.pipeline import (
     decode_photo,
     draw_text_block,
     fit_bottom_center,
+    layout_caption,
     text_lines,
 )
 from app.placements import Box, Placement, load_placements
@@ -257,11 +258,20 @@ def test_fit_font_shrinks_but_not_below_floor():
     img = Image.new("RGB", (300, 300), "white")
     draw = ImageDraw.Draw(img)
 
-    long_line_font = _fit_font(draw, ["A" * 200], FONT_PATH, 24, 160)
+    long_line_font = _fit_font(draw, ["A" * 200], FONT_PATH, 24, 160, 100)
     assert round(24 * MIN_FONT_SCALE) <= long_line_font.size < 24
 
-    short_line_font = _fit_font(draw, ["Ab"], FONT_PATH, 24, 160)
+    short_line_font = _fit_font(draw, ["Ab"], FONT_PATH, 24, 160, 100)
     assert short_line_font.size == 24
+
+
+def test_fit_font_respects_vertical_cap():
+    """Three lines in a 90px-high box at size 36 must fit the box height, not just the width."""
+    img = Image.new("RGB", (400, 200), "white")
+    draw = ImageDraw.Draw(img)
+
+    font = _fit_font(draw, ["Line one", "Line two", "Line three"], FONT_PATH, 36, 400, 90)
+    assert font.size <= 24
 
 
 def test_draw_text_block_shrinks_long_location_instead_of_truncating():
@@ -269,12 +279,48 @@ def test_draw_text_block_shrinks_long_location_instead_of_truncating():
     shrunk toward MIN_FONT_SCALE, should be shrunk rather than truncated with an ellipsis."""
     img = Image.new("RGB", (300, 300), "white")
     draw = ImageDraw.Draw(img)
-    box_width = _synthetic_placement().text_box.w
+    box = _synthetic_placement().text_box
 
     line = "Madhya Pradesh"
-    font = _fit_font(draw, [line], FONT_PATH, 24, box_width)
+    font = _fit_font(draw, [line], FONT_PATH, 24, box.w, box.h)
     assert font.size < 24, "line should have required shrinking at the synthetic box width"
-    assert _truncate(draw, line, font, box_width) == line, "shrunk text should fit without truncation"
+    assert _truncate(draw, line, font, box.w) == line, "shrunk text should fit without truncation"
+
+
+def test_layout_caption_wraps_long_location_onto_two_lines():
+    placement = load_placements()["card-2"]
+    img = Image.new("RGB", (1080, 1260), "white")
+    draw = ImageDraw.Draw(img)
+    fields = TextFields("Rajiv Ranjan", "Gautam Buddha Nagar", "Uttar Pradesh")
+
+    lines, font = layout_caption(draw, fields, FONT_PATH, placement.font_size, placement.text_box)
+
+    assert lines == ["-Rajiv Ranjan", "Gautam Buddha Nagar,", "Uttar Pradesh"]
+    assert all(draw.textlength(line, font=font) <= placement.text_box.w for line in lines)
+    assert font.size >= round(36 * 0.6)
+
+
+def test_layout_caption_keeps_short_location_on_one_line():
+    placement = load_placements()["card-2"]
+    img = Image.new("RGB", (1080, 1260), "white")
+    draw = ImageDraw.Draw(img)
+    fields = TextFields("Rajiv", "Patna", "Bihar")
+
+    lines, font = layout_caption(draw, fields, FONT_PATH, placement.font_size, placement.text_box)
+
+    assert lines == ["-Rajiv", "Patna, Bihar"]
+    assert font.size == 36
+
+
+def test_layout_caption_without_constituency_does_not_split():
+    placement = load_placements()["card-2"]
+    img = Image.new("RGB", (1080, 1260), "white")
+    draw = ImageDraw.Draw(img)
+    fields = TextFields("Rajiv", "", "A very long state name that overflows the box at floor size")
+
+    lines, font = layout_caption(draw, fields, FONT_PATH, placement.font_size, placement.text_box)
+
+    assert len(lines) == 2
 
 
 def test_sample_background_matches_dominant_block_colour_on_every_template():
@@ -288,22 +334,26 @@ def test_sample_background_matches_dominant_block_colour_on_every_template():
 
 
 def test_draw_text_block_ink_stays_inside_text_box_on_every_template():
-    fields = TextFields(name="Rajiv Ranjan", constituency="Gautam Buddha Nagar", state="Uttar Pradesh")
-    for placement in load_placements().values():
-        with Image.open(placement.template_path) as template:
-            original = template.convert("RGB")
-        copy = original.copy()
-        draw_text_block(copy, placement, fields)
-        diff = ImageChops.difference(copy, original).convert("L").point(lambda p: 255 if p > 24 else 0)
-        bbox = diff.getbbox()
-        assert bbox is not None, f"{placement.template_id}: expected drawing to change some pixels"
-        bx0, by0, bx1, by1 = bbox
-        tb = placement.text_box
-        assert bx0 >= tb.x and by0 >= tb.y and bx1 <= tb.right and by1 <= tb.bottom, (
-            placement.template_id,
-            bbox,
-            tb,
-        )
+    field_cases = [
+        TextFields(name="Rajiv", constituency="Patna", state="Bihar"),
+        TextFields(name="Rajiv Ranjan", constituency="Gautam Buddha Nagar", state="Uttar Pradesh"),
+    ]
+    for fields in field_cases:
+        for placement in load_placements().values():
+            with Image.open(placement.template_path) as template:
+                original = template.convert("RGB")
+            copy = original.copy()
+            draw_text_block(copy, placement, fields)
+            diff = ImageChops.difference(copy, original).convert("L").point(lambda p: 255 if p > 24 else 0)
+            bbox = diff.getbbox()
+            assert bbox is not None, f"{placement.template_id}: expected drawing to change some pixels"
+            bx0, by0, bx1, by1 = bbox
+            tb = placement.text_box
+            assert bx0 >= tb.x and by0 >= tb.y and bx1 <= tb.right and by1 <= tb.bottom, (
+                placement.template_id,
+                bbox,
+                tb,
+            )
 
 
 def test_compose_end_to_end_produces_a_jpeg_of_card_size(photo_bytes):

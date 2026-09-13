@@ -3,7 +3,7 @@
   background: transparent;
   position: relative;
   z-index: 1;
-  padding: 0 16px 24px;
+  padding: 0 16px 16px;
   display: flex;
   flex-direction: column;
 }
@@ -46,13 +46,13 @@
   line-height: 28px;
   color: var(--c-text);
   text-shadow: 0.51px 0 0 var(--c-shadow);
-  margin: 20px 0 16px;
+  margin: 14px 0 10px;
 }
 
 .tips__illustration {
-  width: 168px;
-  height: 168px;
-  margin: 0 auto 18px;
+  width: 128px;
+  height: 128px;
+  margin: 0 auto 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -67,8 +67,8 @@
 .tips__card {
   background: #ffffff;
   border-radius: 16px;
-  padding: 20px 20px 12px;
-  margin-bottom: 20px;
+  padding: 16px 18px 10px;
+  margin-bottom: 0;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
 }
 
@@ -87,7 +87,7 @@
 }
 
 .tips__list li {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   font-size: 14px;
   font-weight: 700;
   line-height: 26px;
@@ -100,7 +100,7 @@
 }
 
 .tips__proceed {
-  margin-top: auto;
+  margin-top: 18px;
   width: 100%;
   padding: 15px;
   border-radius: 28px;

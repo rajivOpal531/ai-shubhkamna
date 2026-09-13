@@ -1,3 +1,9 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 :root {
   /* App UI typeface. Poppins (the design's Cy is licensed only for personal use, so we ship Poppins).
      Inter and Satoshi are exact per the Figma spec (Inspire-me link and hashtags). */

@@ -31,7 +31,10 @@ describe('Processing', () => {
       <Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={onComposited} onError={vi.fn()} />,
     );
 
-    await waitFor(() => expect(onComposited).toHaveBeenCalledWith({ imageBlob: expect.any(Blob) }));
+    // onComposited fires after the staged upload + finish animation (~1.8s), so allow extra time.
+    await waitFor(() => expect(onComposited).toHaveBeenCalledWith({ imageBlob: expect.any(Blob) }), {
+      timeout: 4000,
+    });
     expect(compositePhotoMock).toHaveBeenCalledWith(expect.objectContaining({ jwt: 'test-jwt', templateId: 'card-1' }));
   });
 

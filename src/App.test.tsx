@@ -56,7 +56,8 @@ describe('App', () => {
     const file = new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' });
     await userEvent.upload(screen.getByTestId('landing-file-input'), file);
 
-    await screen.findByAltText(/your birthday card/i);
+    // Preview appears after the staged processing animation (~1.8s).
+    await screen.findByAltText(/your birthday card/i, {}, { timeout: 4000 });
     await userEvent.type(screen.getByPlaceholderText(/write your birthday wish/i), 'Happy Birthday!');
     await userEvent.click(screen.getByRole('button', { name: /^post$/i }));
 

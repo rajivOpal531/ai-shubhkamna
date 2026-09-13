@@ -1,18 +1,145 @@
 .processing {
   min-height: 100vh;
-  background: #000;
-  color: #fff;
+  background: #fbf5ee;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
-  gap: 8px;
   padding: 24px;
+  text-align: center;
+}
+
+.processing__steps {
+  width: 100%;
+  max-width: 320px;
+}
+
+.processing__heading {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 24px;
+}
+
+.processing__step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  margin-bottom: 12px;
+  text-align: left;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+  transition: opacity 0.3s ease;
+}
+
+.processing__step--pending {
+  opacity: 0.5;
+}
+
+.processing__step-icon {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e2ddd4;
+}
+
+.processing__step--done .processing__step-icon {
+  background: #21a555;
+}
+
+.processing__step--active .processing__step-icon {
+  background: transparent;
+}
+
+.processing__step-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.processing__spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 3px solid #d9d2c6;
+  border-top-color: #4c3fbb;
+  animation: processing-spin 0.8s linear infinite;
+}
+
+@keyframes processing-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.processing__finish {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: processing-fade 0.4s ease-out;
+}
+
+@keyframes processing-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.processing__finish-badge {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #21a555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  animation: processing-pop 0.4s ease-out;
+}
+
+@keyframes processing-pop {
+  0% {
+    transform: scale(0);
+  }
+  70% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.processing__finish-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #1a1a1a;
+  margin: 0 0 8px;
+}
+
+.processing__finish-text {
+  font-size: 15px;
+  color: #555;
+  max-width: 280px;
+  margin: 0;
+}
+
+.processing--error {
+  gap: 12px;
 }
 
 .processing--error button {
-  padding: 12px 24px;
+  padding: 12px 20px;
   border-radius: 24px;
   border: none;
   background: #4c3fbb;

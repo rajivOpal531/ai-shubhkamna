@@ -1,4 +1,3 @@
-import './assets/fonts/cy.css';
 import './assets/fonts/poppins.css';
 import './assets/fonts/inter.css';
 import './assets/fonts/satoshi.css';

@@ -20,6 +20,17 @@ function renderLanding(overrides: Partial<React.ComponentProps<typeof Landing>> 
 }
 
 describe('Landing', () => {
+  it('edits the name through the pencil popup', async () => {
+    const props = renderLanding({ name: 'Old Name' });
+    await userEvent.click(screen.getByRole('button', { name: /edit name/i }));
+    expect(screen.getByRole('dialog', { name: /edit display name/i })).toBeInTheDocument();
+    const input = screen.getByPlaceholderText(/enter your name/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, 'New Name');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+    expect(props.onNameChange).toHaveBeenCalledWith('New Name');
+  });
+
   it('shows the headline copy', () => {
     renderLanding();
     expect(screen.getByText(/join the nation in wishing pm modi/i)).toBeInTheDocument();

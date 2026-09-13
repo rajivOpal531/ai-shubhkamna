@@ -43,13 +43,31 @@
   font-weight: 600;
 }
 
+.landing__name-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .landing__name-input {
   width: 100%;
-  padding: 12px;
-  border-radius: 8px;
+  padding: 13px 44px 13px 14px;
+  border-radius: 10px;
   border: 1px solid #ddd;
   font-size: 16px;
   box-sizing: border-box;
+}
+
+.landing__name-edit {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
 }
 
 .landing__actions {
@@ -61,19 +79,23 @@
 .landing__actions button {
   flex: 1;
   padding: 14px;
-  border-radius: 24px;
+  border-radius: 28px;
   font-size: 16px;
   font-weight: 600;
-  border: 2px solid #4c3fbb;
+  border: 1.5px solid #4c3fbb;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
-.landing__actions button:first-child {
+.landing__upload {
   background: #4c3fbb;
   color: #fff;
 }
 
-.landing__actions button:last-child {
+.landing__capture {
   background: #fff;
   color: #4c3fbb;
 }

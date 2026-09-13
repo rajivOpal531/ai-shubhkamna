@@ -422,8 +422,8 @@ def test_face_check_runs_before_background_removal(photo_bytes):
     assert calls["remover"] == 0
 
 
-def test_bundled_font_is_present_and_loads_as_poppins():
+def test_bundled_caption_font_is_present_and_loads():
     from app.pipeline import FONT_PATH, _load_font
 
     assert FONT_PATH.is_file(), FONT_PATH
-    assert _load_font(FONT_PATH, 24).getname() == ("Poppins", "SemiBold")
+    assert _load_font(FONT_PATH, 24).size == 24  # Satoshi webfont has a stripped name table; just confirm it loads

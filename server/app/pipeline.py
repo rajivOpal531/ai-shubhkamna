@@ -15,7 +15,7 @@ from .remover import Remover
 MAX_SIDE = 2000
 MAX_PIXELS = 24_000_000  # ~2x headroom over a 12 MP phone photo; PNG/WebP skip the JPEG draft downscale below
 ALPHA_THRESHOLD = 8
-FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Poppins-SemiBold.ttf"
+FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Satoshi-Bold.ttf"
 LINE_HEIGHT_FACTOR = 1.25
 # The caption uses the largest size that fits the box, down to this absolute floor. Below this the
 # text is unreadable, so a very long location shrinks to the floor and then truncates rather than
@@ -218,7 +218,7 @@ def draw_text_block(card: Image.Image, placement: Placement, fields: TextFields,
         y += line_height
 
 
-TEXT_CLEAR_MARGIN = 16
+TEXT_CLEAR_MARGIN = 24
 
 
 def clear_of_text(photo_box: Box, text_box: Box) -> Box:

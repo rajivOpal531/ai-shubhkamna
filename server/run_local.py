@@ -1,6 +1,6 @@
 """Start the compositing service for local testing, reading server/.env for settings.
 
-Usage (from anywhere):  .venv\Scripts\python run_local.py
+Usage (from server/):  .venv/Scripts/python run_local.py
 """
 from __future__ import annotations
 

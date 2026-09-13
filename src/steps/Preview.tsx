@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CompositeResult } from '../types';
 import { InspireMeSheet } from '../components/InspireMeSheet';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { WISH_HASHTAGS, WISH_MAX_LENGTH } from '../data/wishes';
 import './Preview.css';
 
@@ -27,6 +28,7 @@ export function Preview({
 }: Props) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [confirmBack, setConfirmBack] = useState(false);
 
   useEffect(() => {
     if (!composited.imageBlob) {
@@ -90,7 +92,7 @@ export function Preview({
       )}
 
       <div className="preview__actions">
-        <button type="button" className="preview__retake" onClick={onRetake} disabled={posting}>
+        <button type="button" className="preview__retake" onClick={() => setConfirmBack(true)} disabled={posting}>
           {retakeLabel}
         </button>
         <button type="button" className="preview__post" onClick={onPost} disabled={posting}>
@@ -106,6 +108,16 @@ export function Preview({
             setSheetOpen(false);
           }}
           onClose={() => setSheetOpen(false)}
+        />
+      )}
+
+      {confirmBack && (
+        <ConfirmDialog
+          message="All your progress will be lost, do you want to go back?"
+          confirmLabel="Go back"
+          cancelLabel="Cancel"
+          onConfirm={onRetake}
+          onCancel={() => setConfirmBack(false)}
         />
       )}
     </div>

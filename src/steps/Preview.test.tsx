@@ -103,4 +103,14 @@ describe('Preview', () => {
     await userEvent.click(screen.getByRole('button', { name: /^post$/i }));
     expect(onPost).toHaveBeenCalled();
   });
+
+  it('confirms before going back from Reupload/Retake', async () => {
+    const onRetake = vi.fn();
+    renderPreview({ onRetake });
+    await userEvent.click(screen.getByRole('button', { name: /reupload/i }));
+    expect(screen.getByText(/all your progress will be lost/i)).toBeInTheDocument();
+    expect(onRetake).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: /go back/i }));
+    expect(onRetake).toHaveBeenCalled();
+  });
 });

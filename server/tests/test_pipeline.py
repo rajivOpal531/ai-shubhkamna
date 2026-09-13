@@ -336,3 +336,10 @@ def test_compose_raises_no_subject_when_remover_returns_transparent(photo_bytes)
     placement = load_placements()["card-1"]
     with pytest.raises(NoSubjectError):
         compose(photo_bytes, placement, TextFields(), empty_remover)
+
+
+def test_bundled_font_is_present_and_loads_as_poppins():
+    from app.pipeline import FONT_PATH, _load_font
+
+    assert FONT_PATH.is_file(), FONT_PATH
+    assert _load_font(FONT_PATH, 24).getname() == ("Poppins", "SemiBold")

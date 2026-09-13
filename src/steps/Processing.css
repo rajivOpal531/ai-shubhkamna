@@ -11,9 +11,12 @@
   background: transparent; /* error state sits over AppBackground */
 }
 
-/* Dark loading screen (Figma: white/muted text) */
+/* Dark loading overlay: Figma Rectangle 3464339 = #191919 at 85% over the watermark */
 .processing--loading {
-  background: radial-gradient(130% 80% at 50% 18%, #2a2740 0%, #16121e 68%);
+  background:
+    linear-gradient(rgba(25, 25, 25, 0.85), rgba(25, 25, 25, 0.85)),
+    url('../assets/app-bg.png') center top / cover no-repeat,
+    #191919;
 }
 
 .processing__steps {

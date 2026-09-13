@@ -160,3 +160,13 @@ def test_profile_cors_exposes_request_id(profile_client):
     )
     assert response.status_code == 200
     assert "x-request-id" in response.headers.get("access-control-expose-headers", "").lower()
+
+
+def test_non_string_data_claim_is_422(profile_client):
+    token = _make_token(raw_data=None)
+    # forge a token whose data claim is a number, signed with the test secret
+    claims = {"exp": int(time.time()) + 3600, "data": 12345}
+    bad = jwt.encode(claims, TEST_JWT_SECRET, algorithm="HS256")
+    response = profile_client.get("/profile", headers={"Authorization": f"Bearer {bad}"})
+    assert response.status_code == 422
+    assert response.headers.get("X-Request-Id")

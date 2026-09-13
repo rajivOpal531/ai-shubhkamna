@@ -293,7 +293,7 @@ def create_app(
             raise HTTPException(status_code=401, detail="Invalid token", headers=rid) from exc
 
         data_claim = payload.get("data")
-        if not data_claim:
+        if not isinstance(data_claim, str) or not data_claim:
             raise HTTPException(status_code=422, detail="Token has no profile data", headers=rid)
 
         log.info(

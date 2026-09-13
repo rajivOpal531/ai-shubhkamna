@@ -1,9 +1,9 @@
-"""Face counting via OpenCV's YuNet detector. The model is vendored under models/.
+"""Face detection via OpenCV's YuNet detector. The model is vendored under models/.
 
-Used only as a fast pre-check in the pipeline: zero faces -> NoFaceError, more than one ->
-MultipleFacesError, so the caller can show a specific "no face" / "multiple faces" message
-instead of the generic "no person" one. Detection runs on a downscaled copy of the upload
-(the campaign photos are head-to-waist portraits, so a face is large relative to the frame).
+Used as a fast pre-check in the pipeline: zero faces -> NoFaceError, more than one ->
+MultipleFacesError. The detector returns each face's box normalised to the image (x, y, w, h in
+[0, 1]); the count is len(boxes) and the largest face's area fraction tells us whether the photo
+is a close-up (a big face) rather than the "upper body in full" the poster wants.
 """
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ from typing import Callable
 
 from PIL import Image
 
-FaceDetector = Callable[[Image.Image], int]  # RGB image in, face count out
+# RGB image in; list of (x, y, w, h) face boxes normalised to [0, 1] out.
+FaceBox = tuple[float, float, float, float]
+FaceDetector = Callable[[Image.Image], list[FaceBox]]
 
 MODEL_PATH = Path(__file__).resolve().parent / "models" / "face_detection_yunet_2023mar.onnx"
 # YuNet is trained around ~320px inputs; a 1024px longest edge keeps small/near faces detectable
@@ -26,7 +28,7 @@ def make_face_detector(
     score_threshold: float = 0.7,
     max_side: int = DETECT_MAX_SIDE,
 ) -> FaceDetector:
-    """Build the YuNet-backed counter. Imported lazily so tests never touch OpenCV/ONNX."""
+    """Build the YuNet-backed detector. Imported lazily so tests never touch OpenCV/ONNX."""
     import cv2  # noqa: WPS433 (lazy on purpose)
     import numpy as np  # noqa: WPS433
 
@@ -38,7 +40,7 @@ def make_face_detector(
     # mutates state), so serialise detect() with a lock. It runs in tens of ms, so this is cheap.
     lock = threading.Lock()
 
-    def _count(img: Image.Image) -> int:
+    def _detect(img: Image.Image) -> list[FaceBox]:
         rgb = img.convert("RGB")
         width, height = rgb.size
         scale = min(1.0, max_side / max(width, height))
@@ -49,6 +51,8 @@ def make_face_detector(
         with lock:
             detector.setInputSize((det_w, det_h))
             _, faces = detector.detect(bgr)
-        return 0 if faces is None else len(faces)
+        if faces is None:
+            return []
+        return [(float(f[0]) / det_w, float(f[1]) / det_h, float(f[2]) / det_w, float(f[3]) / det_h) for f in faces]
 
-    return _count
+    return _detect

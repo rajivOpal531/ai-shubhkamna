@@ -22,6 +22,10 @@ LINE_HEIGHT_FACTOR = 1.25
 # going smaller; normal-length names/locations render at the placement's full size.
 MIN_FONT_PX = 20
 
+# A single face larger than this fraction of the photo is a close-up, not the "upper body in full"
+# the poster wants -- flag it so the app can suggest a better photo.
+FACE_MAX_AREA_RATIO = 0.08
+
 Font = ImageFont.FreeTypeFont
 
 
@@ -304,12 +308,15 @@ def compose(
     so a bad photo is rejected fast with a specific message.
     """
     photo = decode_photo(photo_bytes)
+    face_close_up = False
     if face_detector is not None:
         faces = face_detector(photo)
-        if faces == 0:
+        if len(faces) == 0:
             raise NoFaceError("No face detected in photo")
-        if faces > 1:
-            raise MultipleFacesError(f"{faces} faces detected in photo")
+        if len(faces) > 1:
+            raise MultipleFacesError(f"{len(faces)} faces detected in photo")
+        # (x, y, w, h) are already normalised to the image, so w*h is the face's area fraction.
+        face_close_up = max(w * h for _, _, w, h in faces) > FACE_MAX_AREA_RATIO
     cutout = crop_to_subject(remover(photo))
     with Image.open(placement.template_path) as template:
         card = template.convert("RGB")
@@ -319,7 +326,7 @@ def compose(
     fitted = fit_bottom_center(cutout.size, clear_box)
     cutout = cutout.resize((fitted.w, fitted.h), Image.LANCZOS)
     # Detect the overlap before masking, so we can warn the user; the mask still keeps the caption readable.
-    text_overlap = _opaque_in_text_box(cutout, fitted.x, fitted.y, placement.text_box)
+    text_overlap = face_close_up or _opaque_in_text_box(cutout, fitted.x, fitted.y, placement.text_box)
     _mask_out_text_box(cutout, fitted.x, fitted.y, placement.text_box)
     card.paste(cutout, (fitted.x, fitted.y), cutout)
     draw_text_block(card, placement, fields, font_path)

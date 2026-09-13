@@ -395,18 +395,18 @@ def test_compose_raises_no_subject_when_remover_returns_transparent(photo_bytes)
 def test_compose_raises_no_face_when_detector_finds_none(photo_bytes):
     placement = load_placements()["card-1"]
     with pytest.raises(NoFaceError):
-        compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: 0)
+        compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: [])
 
 
 def test_compose_raises_multiple_faces_when_detector_finds_many(photo_bytes):
     placement = load_placements()["card-1"]
     with pytest.raises(MultipleFacesError):
-        compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: 2)
+        compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: [(0.1, 0.1, 0.1, 0.1), (0.6, 0.1, 0.1, 0.1)])
 
 
 def test_compose_passes_with_single_face(photo_bytes):
     placement = load_placements()["card-1"]
-    out = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: 1)
+    out = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: [(0.4, 0.1, 0.1, 0.1)])
     assert out.jpeg[:3] == bytes.fromhex("ffd8ff")  # JPEG magic
     assert out.text_overlap is False
 
@@ -421,7 +421,7 @@ def test_face_check_runs_before_background_removal(photo_bytes):
         return fake_remover(img)
 
     with pytest.raises(NoFaceError):
-        compose(photo_bytes, placement, TextFields(), counting_remover, face_detector=lambda img: 0)
+        compose(photo_bytes, placement, TextFields(), counting_remover, face_detector=lambda img: [])
     assert calls["remover"] == 0
 
 
@@ -450,3 +450,13 @@ def test_compose_returns_rendered_with_overlap_flag(photo_bytes):
     assert isinstance(out, Rendered)
     assert out.jpeg[:3] == bytes.fromhex("ffd8ff")
     assert isinstance(out.text_overlap, bool)
+
+
+def test_compose_flags_overlap_for_a_close_up_face(photo_bytes):
+    placement = load_placements()["card-1"]
+    # a single face covering ~30% of the frame -> close-up -> poster warning
+    big_face = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: [(0.3, 0.2, 0.55, 0.55)])
+    assert big_face.text_overlap is True
+    # a small face (upper-body framing) -> no warning
+    small_face = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: [(0.4, 0.1, 0.1, 0.1)])
+    assert small_face.text_overlap is False

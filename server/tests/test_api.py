@@ -105,7 +105,7 @@ def test_single_face_passes_when_face_check_on(uploader):
         settings=make_settings(face_check_enabled=True),
         remover=fake_remover,
         uploader=uploader,
-        face_detector=lambda img: 1,
+        face_detector=lambda img: [(0.4, 0.1, 0.1, 0.1)],
     )
     with TestClient(app) as client:
         response = _post(client, name="Rajiv", constituency="Patna", state="Bihar")
@@ -117,7 +117,7 @@ def test_no_face_is_422_with_no_face_code(uploader):
         settings=make_settings(face_check_enabled=True),
         remover=fake_remover,
         uploader=uploader,
-        face_detector=lambda img: 0,
+        face_detector=lambda img: [],
     )
     with TestClient(app) as client:
         response = _post(client)
@@ -130,7 +130,7 @@ def test_multiple_faces_is_422_with_multiple_faces_code(uploader):
         settings=make_settings(face_check_enabled=True),
         remover=fake_remover,
         uploader=uploader,
-        face_detector=lambda img: 3,
+        face_detector=lambda img: [(0.1, 0.1, 0.1, 0.1), (0.4, 0.1, 0.1, 0.1), (0.7, 0.1, 0.1, 0.1)],
     )
     with TestClient(app) as client:
         response = _post(client)

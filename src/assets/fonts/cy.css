@@ -1,0 +1,29 @@
+/* Cy — the design's primary typeface (provided by the client). */
+@font-face {
+  font-family: 'Cy';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('./cy-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cy';
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url('./cy-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cy';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('./cy-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cy';
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+  src: url('./cy-800.woff2') format('woff2');
+}

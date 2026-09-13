@@ -28,9 +28,9 @@
 .confirm-dialog__message {
   margin: 0 0 20px;
   font-size: 16px;
-  font-weight: 600;
-  color: #1a1a1a;
-  line-height: 1.4;
+  font-weight: 700;
+  line-height: 24px;
+  color: var(--c-text);
 }
 
 .confirm-dialog__actions {
@@ -42,19 +42,20 @@
   flex: 1;
   padding: 12px;
   border-radius: 24px;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
   cursor: pointer;
 }
 
 .confirm-dialog__cancel {
-  background: #ffffff;
-  border: 1.5px solid #4c3fbb;
-  color: #4c3fbb;
+  background: var(--c-white);
+  border: 1.5px solid var(--c-main);
+  color: var(--c-main);
 }
 
 .confirm-dialog__confirm {
-  background: #4c3fbb;
-  border: 1.5px solid #4c3fbb;
-  color: #ffffff;
+  background: var(--c-main);
+  border: 1.5px solid var(--c-main);
+  color: var(--c-white);
 }

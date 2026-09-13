@@ -1,12 +1,19 @@
 .processing {
   min-height: 100vh;
-  background: #fbf5ee;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 24px;
   text-align: center;
+  position: relative;
+  z-index: 1;
+  background: transparent; /* error state sits over AppBackground */
+}
+
+/* Dark loading screen (Figma: white/muted text) */
+.processing--loading {
+  background: radial-gradient(130% 80% at 50% 18%, #2a2740 0%, #16121e 68%);
 }
 
 .processing__steps {
@@ -15,9 +22,10 @@
 }
 
 .processing__heading {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
-  color: #1a1a1a;
+  line-height: 24px;
+  color: var(--c-white);
   margin: 0 0 24px;
 }
 
@@ -27,15 +35,14 @@
   gap: 12px;
   padding: 12px 14px;
   border-radius: 12px;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.07);
   margin-bottom: 12px;
   text-align: left;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
   transition: opacity 0.3s ease;
 }
 
 .processing__step--pending {
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .processing__step-icon {
@@ -46,7 +53,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #e2ddd4;
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .processing__step--done .processing__step-icon {
@@ -57,18 +64,24 @@
   background: transparent;
 }
 
+/* Label/Large on the dark screen */
 .processing__step-label {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1a1a1a;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
+  color: var(--c-white);
+}
+
+.processing__step--active .processing__step-label {
+  opacity: 0.6; /* Figma: active "Processing" at 60% */
 }
 
 .processing__spinner {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  border: 3px solid #d9d2c6;
-  border-top-color: #4c3fbb;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #ffffff;
   animation: processing-spin 0.8s linear infinite;
 }
 
@@ -96,65 +109,39 @@
   }
 }
 
-.processing__finish-badge {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: #21a555;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.processing__finish-art {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
   margin-bottom: 16px;
-  animation: processing-pop 0.4s ease-out;
 }
 
-@keyframes processing-pop {
-  0% {
-    transform: scale(0);
-  }
-  70% {
-    transform: scale(1.15);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
+/* Figma tags these Button/Primary: 14 / 700 / 20 */
 .processing__finish-title {
-  font-size: 24px;
-  font-weight: 800;
-  color: #1a1a1a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  color: var(--c-white);
   margin: 0 0 8px;
 }
 
 .processing__finish-text {
-  font-size: 15px;
-  color: #555;
-  max-width: 280px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  color: var(--c-white);
+  max-width: 300px;
   margin: 0;
 }
 
+.processing__finish-text--muted {
+  color: var(--c-stroke);
+  margin-top: 2px;
+}
+
+/* ---- Error screen (light, over AppBackground) ---- */
 .processing--error {
   gap: 12px;
-}
-
-/* ---- Round-2 rework: transparent bg (AppBackground provides it), hang-tight + error screens ---- */
-.processing {
-  background: transparent;
-  position: relative;
-  z-index: 1;
-}
-
-.processing__spinner--lg {
-  width: 34px;
-  height: 34px;
-  border-width: 4px;
-}
-
-.processing__finish-badge {
-  background: #ffffff;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
-  animation: none;
 }
 
 .processing__art {
@@ -165,16 +152,18 @@
 }
 
 .processing__error-title {
-  font-size: 22px;
-  font-weight: 800;
-  color: #1a1a1a;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 28px;
+  color: var(--c-text);
   margin: 0 0 8px;
 }
 
 .processing__error-body {
-  font-size: 15px;
-  line-height: 1.45;
-  color: #555;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  color: var(--c-text);
   max-width: 300px;
   margin: 0 0 22px;
 }
@@ -188,30 +177,31 @@
   margin-top: 20px;
 }
 
+/* Button/Primary: 14 / 700 / 20 (colour depends on the button) */
 .processing__btn {
   width: 100%;
   padding: 13px 20px;
   border-radius: 26px;
   border: none;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
   cursor: pointer;
 }
 
 .processing__btn--primary {
-  background: #4c3fbb;
-  color: #fff;
+  background: var(--c-main);
+  color: var(--c-white);
 }
 
 .processing__btn--ghost {
   background: transparent;
-  color: #4c3fbb;
+  color: var(--c-main);
   border: 1.5px solid #cfc7f0;
 }
 
-.processing__finish-art {
-  width: 72px;
-  height: 72px;
-  object-fit: contain;
-  margin-bottom: 16px;
+.processing__btn--ondark {
+  background: transparent;
+  color: var(--c-white);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
 }

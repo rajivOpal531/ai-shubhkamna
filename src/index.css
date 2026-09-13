@@ -1,7 +1,18 @@
 :root {
-  /* App UI typeface. Poppins matches the Figma design and the composited card caption.
-     Swap the first family here if the design's font differs. */
-  --font-sans: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* App UI typeface. Poppins stands in for the design's "Cy"; swap the first family to change it.
+     Inter and Satoshi are exact per the Figma spec (Inspire-me link and hashtags). */
+  --font-sans: 'Cy', 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-inter: 'Inter', var(--font-sans);
+  --font-satoshi: 'Satoshi', var(--font-sans);
+
+  /* Figma colour tokens */
+  --c-text: #000000;
+  --c-white: #ffffff;
+  --c-main: #4b58b7;
+  --c-stroke: #d4ccc5;
+  --c-subtext: #898480;
+  --c-red: #dd0000;
+  --c-shadow: #d96b38;
 }
 
 body {

@@ -1,4 +1,7 @@
+import './assets/fonts/cy.css';
 import './assets/fonts/poppins.css';
+import './assets/fonts/inter.css';
+import './assets/fonts/satoshi.css';
 import './index.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

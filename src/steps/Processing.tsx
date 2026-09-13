@@ -196,20 +196,18 @@ export function Processing({
   const processDone = result !== null;
 
   return (
-    <div className="processing">
-      <AppBackground />
+    <div className="processing processing--loading">
       {handedOff ? (
         <div className="processing__finish">
           <img className="processing__finish-art" src={hangTightArt} alt="" aria-hidden="true" />
           <h2 className="processing__finish-title">Hang tight!</h2>
-          <p className="processing__finish-text">
-            Our AI is working its magic to bring you something special. Check back in a little while!
-          </p>
+          <p className="processing__finish-text">Our AI is working its magic to bring you something special.</p>
+          <p className="processing__finish-text processing__finish-text--muted">Check back in a little while!</p>
           <div className="processing__error-actions">
-            <button type="button" className="processing__btn processing__btn--ghost" onClick={onHome ?? onError}>
+            <button type="button" className="processing__btn processing__btn--ondark" onClick={onHome ?? onError}>
               Go Back
             </button>
-            <button type="button" className="processing__btn processing__btn--ghost" onClick={onError}>
+            <button type="button" className="processing__btn processing__btn--ondark" onClick={onError}>
               Restart
             </button>
           </div>
@@ -217,8 +215,8 @@ export function Processing({
       ) : (
         <div className="processing__steps" aria-live="polite">
           <h2 className="processing__heading">Creating your card</h2>
-          <Step label="Photo uploaded" state={uploadDone ? 'done' : 'active'} />
-          <Step label="Processing" state={processDone ? 'done' : uploadDone ? 'active' : 'pending'} />
+          <Step label={uploadDone ? 'Uploaded' : 'Uploading'} state={uploadDone ? 'done' : 'active'} />
+          <Step label={processDone ? 'Processed' : 'Processing'} state={processDone ? 'done' : uploadDone ? 'active' : 'pending'} />
         </div>
       )}
     </div>

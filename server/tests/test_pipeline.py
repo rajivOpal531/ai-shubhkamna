@@ -13,7 +13,9 @@ from app.pipeline import (
     MultipleFacesError,
     NoFaceError,
     NoSubjectError,
+    Rendered,
     TextFields,
+    _opaque_in_text_box,
     _fit_font,
     _load_font,
     _sample_background,
@@ -360,7 +362,7 @@ def test_draw_text_block_ink_stays_inside_text_box_on_every_template():
 
 def test_compose_end_to_end_produces_a_jpeg_of_card_size(photo_bytes):
     placement = load_placements()["card-2"]
-    out = compose(photo_bytes, placement, TextFields(name="Rajiv", constituency="Patna", state="Bihar"), fake_remover)
+    out = compose(photo_bytes, placement, TextFields(name="Rajiv", constituency="Patna", state="Bihar"), fake_remover).jpeg
     img = Image.open(io.BytesIO(out))
     assert img.format == "JPEG"
     assert img.size == (1080, 1260)
@@ -375,7 +377,7 @@ def test_compose_end_to_end_produces_a_jpeg_of_card_size(photo_bytes):
 
 def test_compose_pastes_cutout_inside_photo_box(photo_bytes):
     placement = load_placements()["card-15"]
-    out = compose(photo_bytes, placement, TextFields(), fake_remover)
+    out = compose(photo_bytes, placement, TextFields(), fake_remover).jpeg
     img = Image.open(io.BytesIO(out)).convert("RGB")
     pb = placement.photo_box
     # fake cutout is a flat (230,200,180)-ish rectangle; sample its centre-bottom
@@ -405,7 +407,8 @@ def test_compose_raises_multiple_faces_when_detector_finds_many(photo_bytes):
 def test_compose_passes_with_single_face(photo_bytes):
     placement = load_placements()["card-1"]
     out = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: 1)
-    assert out[:3] == bytes.fromhex("ffd8ff")  # JPEG magic
+    assert out.jpeg[:3] == bytes.fromhex("ffd8ff")  # JPEG magic
+    assert out.text_overlap is False
 
 
 def test_face_check_runs_before_background_removal(photo_bytes):
@@ -427,3 +430,23 @@ def test_bundled_caption_font_is_present_and_loads():
 
     assert FONT_PATH.is_file(), FONT_PATH
     assert _load_font(FONT_PATH, 24).size == 24  # Satoshi webfont has a stripped name table; just confirm it loads
+
+
+def test_opaque_in_text_box_detects_overlap():
+    from PIL import Image
+    from app.placements import Box
+
+    box = Box(x=100, y=100, w=80, h=40)
+    solid = Image.new("RGBA", (200, 200), (0, 0, 0, 255))
+    clear = Image.new("RGBA", (200, 200), (0, 0, 0, 0))
+    # cutout placed at 0,0 covering the box -> overlap; a fully transparent cutout -> no overlap
+    assert _opaque_in_text_box(solid, 0, 0, box) is True
+    assert _opaque_in_text_box(clear, 0, 0, box) is False
+
+
+def test_compose_returns_rendered_with_overlap_flag(photo_bytes):
+    placement = load_placements()["card-2"]
+    out = compose(photo_bytes, placement, TextFields(), fake_remover)
+    assert isinstance(out, Rendered)
+    assert out.jpeg[:3] == bytes.fromhex("ffd8ff")
+    assert isinstance(out.text_overlap, bool)

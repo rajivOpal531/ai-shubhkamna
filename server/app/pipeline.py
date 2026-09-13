@@ -48,6 +48,14 @@ class TextFields:
     state: str = ""
 
 
+@dataclass(frozen=True)
+class Rendered:
+    """Result of compose(): the JPEG plus whether the person overlapped the caption region."""
+
+    jpeg: bytes
+    text_overlap: bool = False
+
+
 def decode_photo(data: bytes) -> Image.Image:
     """Decode an upload to an RGB image no larger than MAX_SIDE on its longest edge.
 
@@ -262,6 +270,19 @@ def _mask_out_text_box(cutout: Image.Image, x: int, y: int, text_box: Box) -> No
     cutout.putalpha(_paste_alpha(cutout.getchannel("A"), clear, left, top))
 
 
+def _opaque_in_text_box(cutout: Image.Image, x: int, y: int, text_box: Box) -> bool:
+    """True if any sufficiently-opaque cutout pixel falls inside `text_box` (with the clear margin),
+    i.e. the person would cover the caption. Measured before masking so we can warn the user."""
+    left = max(text_box.x - TEXT_CLEAR_MARGIN - x, 0)
+    top = max(text_box.y - TEXT_CLEAR_MARGIN - y, 0)
+    right = min(text_box.right + TEXT_CLEAR_MARGIN - x, cutout.width)
+    bottom = min(text_box.bottom + TEXT_CLEAR_MARGIN - y, cutout.height)
+    if right <= left or bottom <= top:
+        return False
+    region = cutout.getchannel("A").crop((left, top, right, bottom))
+    return region.getextrema()[1] > ALPHA_THRESHOLD
+
+
 def _paste_alpha(alpha: Image.Image, clear: Image.Image, left: int, top: int) -> Image.Image:
     alpha = alpha.copy()
     alpha.paste(clear, (left, top))
@@ -275,7 +296,7 @@ def compose(
     remover: Remover,
     font_path: Path = FONT_PATH,
     face_detector: FaceDetector | None = None,
-) -> bytes:
+) -> Rendered:
     """Full pipeline: returns JPEG bytes of the finished card. Opens the template fresh per call (thread safety).
 
     When `face_detector` is supplied, the upload is checked first: no face -> NoFaceError,
@@ -297,9 +318,11 @@ def compose(
     clear_box = clear_of_text(placement.photo_box, placement.text_box)
     fitted = fit_bottom_center(cutout.size, clear_box)
     cutout = cutout.resize((fitted.w, fitted.h), Image.LANCZOS)
+    # Detect the overlap before masking, so we can warn the user; the mask still keeps the caption readable.
+    text_overlap = _opaque_in_text_box(cutout, fitted.x, fitted.y, placement.text_box)
     _mask_out_text_box(cutout, fitted.x, fitted.y, placement.text_box)
     card.paste(cutout, (fitted.x, fitted.y), cutout)
     draw_text_block(card, placement, fields, font_path)
     buffer = io.BytesIO()
     card.save(buffer, "JPEG", quality=90, subsampling=0, optimize=True)
-    return buffer.getvalue()
+    return Rendered(jpeg=buffer.getvalue(), text_overlap=text_overlap)

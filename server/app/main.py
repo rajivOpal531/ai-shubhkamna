@@ -245,7 +245,7 @@ def create_app(
         allow_origins=settings.allowed_origins,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
-        expose_headers=["X-Request-Id"],
+        expose_headers=["X-Request-Id", "X-Poster-Warning"],
     )
 
     @app.exception_handler(RequestValidationError)
@@ -382,15 +382,19 @@ def create_app(
 
         try:
             async with composite_limiter:
-                jpeg = await run_in_threadpool(
+                rendered = await run_in_threadpool(
                     functools.partial(
                         compose, data, placement, fields, runtime.remover, face_detector=runtime.face_detector
                     )
                 )
+            warning = "text-overlap" if rendered.text_overlap else ""
             if settings.response_mode == "image":
-                return Response(content=jpeg, media_type="image/jpeg", headers={"X-Request-Id": request_id})
+                headers = {"X-Request-Id": request_id}
+                if warning:
+                    headers["X-Poster-Warning"] = warning
+                return Response(content=rendered.jpeg, media_type="image/jpeg", headers=headers)
             assert runtime.uploader is not None
-            url = await run_in_threadpool(runtime.uploader.upload_jpeg, jpeg)
+            url = await run_in_threadpool(runtime.uploader.upload_jpeg, rendered.jpeg)
         except BadImageError as exc:
             raise HTTPException(status_code=415, detail=str(exc), headers=rid) from exc
         except NoFaceError as exc:
@@ -409,6 +413,8 @@ def create_app(
             raise HTTPException(500, f"Internal error (req {request_id})", headers=rid) from None
 
         response.headers["X-Request-Id"] = request_id
-        return {"imageUrl": url}
+        if warning:
+            response.headers["X-Poster-Warning"] = warning
+        return {"imageUrl": url, "warning": warning or None}
 
     return app

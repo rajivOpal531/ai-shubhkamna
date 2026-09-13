@@ -138,6 +138,26 @@ def test_multiple_faces_is_422_with_multiple_faces_code(uploader):
     assert response.json()["detail"] == "multiple_faces"
 
 
+def test_overlap_warning_header_is_set(uploader, monkeypatch):
+    from app.pipeline import Rendered
+    monkeypatch.setattr("app.main.compose", lambda *a, **k: Rendered(jpeg=make_photo_bytes(), text_overlap=True))
+    app = create_app(settings=make_settings(), remover=fake_remover, uploader=uploader)
+    with TestClient(app) as client:
+        response = _post(client)
+    assert response.status_code == 200, response.text
+    assert response.headers.get("x-poster-warning") == "text-overlap"
+
+
+def test_no_overlap_warning_header_when_clear(uploader, monkeypatch):
+    from app.pipeline import Rendered
+    monkeypatch.setattr("app.main.compose", lambda *a, **k: Rendered(jpeg=make_photo_bytes(), text_overlap=False))
+    app = create_app(settings=make_settings(), remover=fake_remover, uploader=uploader)
+    with TestClient(app) as client:
+        response = _post(client)
+    assert response.status_code == 200
+    assert "x-poster-warning" not in {k.lower() for k in response.headers}
+
+
 def test_face_check_skipped_when_no_detector(uploader):
     """No detector injected and the flag off (test default): a normal photo still composites."""
     app = create_app(settings=make_settings(), remover=fake_remover, uploader=uploader)
@@ -223,10 +243,12 @@ def test_fields_reach_compose(client, monkeypatch):
 
     seen = {}
 
+    from app.pipeline import Rendered
+
     def record(data, placement, fields, remover, face_detector=None):
         seen["fields"] = fields
         seen["placement"] = placement
-        return make_photo_bytes()
+        return Rendered(jpeg=make_photo_bytes())
 
     monkeypatch.setattr("app.main.compose", record)
     assert _post(client, name="Rajiv", constituency="Patna", state="Bihar").status_code == 200
@@ -245,7 +267,8 @@ def test_name_of_exactly_the_limit_is_accepted(client):
 
 
 def test_photo_of_exactly_the_limit_is_not_413(client, monkeypatch):
-    monkeypatch.setattr("app.main.compose", lambda *a, **k: make_photo_bytes())
+    from app.pipeline import Rendered as _R
+    monkeypatch.setattr("app.main.compose", lambda *a, **k: _R(jpeg=make_photo_bytes()))
     limit = make_settings().max_upload_bytes
     response = _post(client, photo=b"x" * limit)
     assert response.status_code == 200, response.text

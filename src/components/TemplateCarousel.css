@@ -17,6 +17,7 @@
   scroll-snap-align: start;
   background: none;
   cursor: pointer;
+  position: relative;
 }
 
 .template-carousel__item img {
@@ -28,4 +29,18 @@
 
 .template-carousel__item--selected {
   border-color: #4c3fbb;
+}
+
+.template-carousel__check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #21a555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }

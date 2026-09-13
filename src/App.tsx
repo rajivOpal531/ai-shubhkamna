@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { JwtProvider, useJwt } from './context/JwtContext';
 import { MissingJwt } from './components/MissingJwt';
 import { ExitConfirm } from './components/ExitConfirm';
 import { Landing } from './steps/Landing';
 import { Tips } from './steps/Tips';
-import { Capture } from './steps/Capture';
 import { Processing } from './steps/Processing';
 import { Preview } from './steps/Preview';
 import { templates } from './data/templates';
@@ -37,6 +36,7 @@ function Flow() {
   const [postError, setPostError] = useState<string | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [processedToast, setProcessedToast] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getProfile(jwt).then((fetched) => {
@@ -94,10 +94,25 @@ function Flow() {
           onDismissToast={() => setProcessedToast(false)}
         />
       )}
-      {step === 'tips' && <Tips onProceed={() => setStep('capture')} onBack={() => setShowExitConfirm(true)} />}
-      {step === 'capture' && (
-        <Capture onCaptured={handleCaptured} onBack={() => setStep('landing')} onUseUploadInstead={() => setStep('landing')} />
+      {step === 'tips' && (
+        <Tips onProceed={() => cameraInputRef.current?.click()} onBack={() => setShowExitConfirm(true)} />
       )}
+      {/* Native camera: `capture` opens the device camera directly on iOS and Android. */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        data-testid="camera-input"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) {
+            handleCaptured(file);
+          }
+          event.target.value = '';
+        }}
+      />
       {step === 'processing' && photo && (
         <Processing
           jwt={jwt}

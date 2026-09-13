@@ -1,6 +1,7 @@
 """FastAPI wiring. Business logic lives in pipeline.py / storage.py."""
 from __future__ import annotations
 
+import functools
 import hashlib
 import logging
 import uuid
@@ -27,7 +28,15 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .body_limit import BodyLimitMiddleware
 from .config import Settings, load_settings
-from .pipeline import BadImageError, NoSubjectError, TextFields, compose
+from .faces import FaceDetector, make_face_detector
+from .pipeline import (
+    BadImageError,
+    MultipleFacesError,
+    NoFaceError,
+    NoSubjectError,
+    TextFields,
+    compose,
+)
 from .placements import Placement, load_placements
 from .profile import ProfileError, decrypt_profile, profile_from_claims
 from .remover import Remover, make_remover
@@ -53,6 +62,7 @@ class Runtime:
     remover: Remover | None = None
     uploader: Uploader | None = None
     http: httpx.AsyncClient | None = None
+    face_detector: FaceDetector | None = None
 
 
 def make_token_validator(validate_url: str, http_getter: Callable[[], httpx.AsyncClient]) -> TokenValidator:
@@ -157,11 +167,12 @@ def create_app(
     uploader: Uploader | None = None,
     token_validator: TokenValidator | None = None,
     placements: dict[str, Placement] | None = None,
+    face_detector: FaceDetector | None = None,
 ) -> FastAPI:
     """App factory. Run with `uvicorn app.main:create_app --factory`."""
     settings = settings if settings is not None else load_settings()
     placements = placements if placements is not None else load_placements()
-    runtime = Runtime(remover=remover, uploader=uploader)
+    runtime = Runtime(remover=remover, uploader=uploader, face_detector=face_detector)
 
     if not settings.allowed_origins:
         raise ValueError("ALLOWED_ORIGINS is not set")
@@ -192,6 +203,8 @@ def create_app(
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
         if runtime.remover is None:
             runtime.remover = make_remover(settings.model_name)
+        if runtime.face_detector is None and settings.face_check_enabled:
+            runtime.face_detector = make_face_detector(score_threshold=settings.face_score_threshold)
         if runtime.uploader is None and settings.response_mode == "url":
             if settings.storage_backend == "local":
                 runtime.uploader = LocalUploader(upload_dir, settings.public_base_url)
@@ -369,15 +382,23 @@ def create_app(
 
         try:
             async with composite_limiter:
-                jpeg = await run_in_threadpool(compose, data, placement, fields, runtime.remover)
+                jpeg = await run_in_threadpool(
+                    functools.partial(
+                        compose, data, placement, fields, runtime.remover, face_detector=runtime.face_detector
+                    )
+                )
             if settings.response_mode == "image":
                 return Response(content=jpeg, media_type="image/jpeg", headers={"X-Request-Id": request_id})
             assert runtime.uploader is not None
             url = await run_in_threadpool(runtime.uploader.upload_jpeg, jpeg)
         except BadImageError as exc:
             raise HTTPException(status_code=415, detail=str(exc), headers=rid) from exc
+        except NoFaceError as exc:
+            raise HTTPException(status_code=422, detail="no_face", headers=rid) from exc
+        except MultipleFacesError as exc:
+            raise HTTPException(status_code=422, detail="multiple_faces", headers=rid) from exc
         except NoSubjectError as exc:
-            raise HTTPException(status_code=422, detail=str(exc), headers=rid) from exc
+            raise HTTPException(status_code=422, detail="no_subject", headers=rid) from exc
         except UploadError as exc:
             log.error("composite req=%s upload failed: %s", request_id, exc)
             raise HTTPException(status_code=502, detail="Upload failed", headers=rid) from exc

@@ -100,6 +100,52 @@ def test_no_subject_is_422(uploader):
     assert response.status_code == 422
 
 
+def test_single_face_passes_when_face_check_on(uploader):
+    app = create_app(
+        settings=make_settings(face_check_enabled=True),
+        remover=fake_remover,
+        uploader=uploader,
+        face_detector=lambda img: 1,
+    )
+    with TestClient(app) as client:
+        response = _post(client, name="Rajiv", constituency="Patna", state="Bihar")
+    assert response.status_code == 200, response.text
+
+
+def test_no_face_is_422_with_no_face_code(uploader):
+    app = create_app(
+        settings=make_settings(face_check_enabled=True),
+        remover=fake_remover,
+        uploader=uploader,
+        face_detector=lambda img: 0,
+    )
+    with TestClient(app) as client:
+        response = _post(client)
+    assert response.status_code == 422
+    assert response.json()["detail"] == "no_face"
+
+
+def test_multiple_faces_is_422_with_multiple_faces_code(uploader):
+    app = create_app(
+        settings=make_settings(face_check_enabled=True),
+        remover=fake_remover,
+        uploader=uploader,
+        face_detector=lambda img: 3,
+    )
+    with TestClient(app) as client:
+        response = _post(client)
+    assert response.status_code == 422
+    assert response.json()["detail"] == "multiple_faces"
+
+
+def test_face_check_skipped_when_no_detector(uploader):
+    """No detector injected and the flag off (test default): a normal photo still composites."""
+    app = create_app(settings=make_settings(), remover=fake_remover, uploader=uploader)
+    with TestClient(app) as client:
+        response = _post(client)
+    assert response.status_code == 200, response.text
+
+
 def test_upload_failure_is_502():
     class FailingUploader:
         def upload_jpeg(self, data):
@@ -177,7 +223,7 @@ def test_fields_reach_compose(client, monkeypatch):
 
     seen = {}
 
-    def record(data, placement, fields, remover):
+    def record(data, placement, fields, remover, face_detector=None):
         seen["fields"] = fields
         seen["placement"] = placement
         return make_photo_bytes()
@@ -199,7 +245,7 @@ def test_name_of_exactly_the_limit_is_accepted(client):
 
 
 def test_photo_of_exactly_the_limit_is_not_413(client, monkeypatch):
-    monkeypatch.setattr("app.main.compose", lambda *a: make_photo_bytes())
+    monkeypatch.setattr("app.main.compose", lambda *a, **k: make_photo_bytes())
     limit = make_settings().max_upload_bytes
     response = _post(client, photo=b"x" * limit)
     assert response.status_code == 200, response.text

@@ -12,7 +12,7 @@ from app.storage import MemoryUploader
 
 def make_settings(**overrides) -> Settings:
     """Defaults from load_settings(env={}) plus a test origin; override any field by keyword."""
-    fields = {"allowed_origins": ["https://app.example"], **overrides}
+    fields = {"allowed_origins": ["https://app.example"], "face_check_enabled": False, **overrides}
     return dataclasses.replace(load_settings(env={}), **fields)
 
 

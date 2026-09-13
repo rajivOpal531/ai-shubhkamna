@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from .faces import FaceDetector
 from .placements import Box, Placement
 from .remover import Remover
 
@@ -30,6 +31,14 @@ class BadImageError(ValueError):
 
 class NoSubjectError(ValueError):
     """Background removal left nothing opaque."""
+
+
+class NoFaceError(ValueError):
+    """The face detector found no face in the upload."""
+
+
+class MultipleFacesError(ValueError):
+    """The face detector found more than one face in the upload."""
 
 
 @dataclass(frozen=True)
@@ -265,9 +274,21 @@ def compose(
     fields: TextFields,
     remover: Remover,
     font_path: Path = FONT_PATH,
+    face_detector: FaceDetector | None = None,
 ) -> bytes:
-    """Full pipeline: returns JPEG bytes of the finished card. Opens the template fresh per call (thread safety)."""
+    """Full pipeline: returns JPEG bytes of the finished card. Opens the template fresh per call (thread safety).
+
+    When `face_detector` is supplied, the upload is checked first: no face -> NoFaceError,
+    more than one -> MultipleFacesError. This runs before the (much heavier) background removal
+    so a bad photo is rejected fast with a specific message.
+    """
     photo = decode_photo(photo_bytes)
+    if face_detector is not None:
+        faces = face_detector(photo)
+        if faces == 0:
+            raise NoFaceError("No face detected in photo")
+        if faces > 1:
+            raise MultipleFacesError(f"{faces} faces detected in photo")
     cutout = crop_to_subject(remover(photo))
     with Image.open(placement.template_path) as template:
         card = template.convert("RGB")

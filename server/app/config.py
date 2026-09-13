@@ -29,6 +29,8 @@ class Settings:
     jwt_signing_secret: str
     profile_key_secret: str
     profile_iv_secret: str
+    face_check_enabled: bool
+    face_score_threshold: float
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -71,4 +73,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         jwt_signing_secret=env.get("USER_JWT_TOKEN_SECRET_KEY", "").strip(),
         profile_key_secret=env.get("PROFILE_DECRYPT_KEY", "").strip(),
         profile_iv_secret=env.get("PROFILE_DECRYPT_IV", "").strip(),
+        face_check_enabled=env.get("FACE_CHECK", "true").strip().lower() == "true",
+        face_score_threshold=float(env.get("FACE_SCORE_THRESHOLD", "0.7")),
     )

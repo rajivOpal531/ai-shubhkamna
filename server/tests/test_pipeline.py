@@ -10,6 +10,8 @@ from app.pipeline import (
     MAX_SIDE,
     MIN_FONT_PX,
     BadImageError,
+    MultipleFacesError,
+    NoFaceError,
     NoSubjectError,
     TextFields,
     _fit_font,
@@ -386,6 +388,38 @@ def test_compose_raises_no_subject_when_remover_returns_transparent(photo_bytes)
     placement = load_placements()["card-1"]
     with pytest.raises(NoSubjectError):
         compose(photo_bytes, placement, TextFields(), empty_remover)
+
+
+def test_compose_raises_no_face_when_detector_finds_none(photo_bytes):
+    placement = load_placements()["card-1"]
+    with pytest.raises(NoFaceError):
+        compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: 0)
+
+
+def test_compose_raises_multiple_faces_when_detector_finds_many(photo_bytes):
+    placement = load_placements()["card-1"]
+    with pytest.raises(MultipleFacesError):
+        compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: 2)
+
+
+def test_compose_passes_with_single_face(photo_bytes):
+    placement = load_placements()["card-1"]
+    out = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: 1)
+    assert out[:3] == bytes.fromhex("ffd8ff")  # JPEG magic
+
+
+def test_face_check_runs_before_background_removal(photo_bytes):
+    """A no-face upload must be rejected without ever invoking the (expensive) remover."""
+    placement = load_placements()["card-1"]
+    calls = {"remover": 0}
+
+    def counting_remover(img):
+        calls["remover"] += 1
+        return fake_remover(img)
+
+    with pytest.raises(NoFaceError):
+        compose(photo_bytes, placement, TextFields(), counting_remover, face_detector=lambda img: 0)
+    assert calls["remover"] == 0
 
 
 def test_bundled_font_is_present_and_loads_as_poppins():

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { compositePhoto, CompositeError } from '../services/composite';
 import { AppBackground } from '../components/AppBackground';
+import faceScanArt from '../assets/error-face-scan.png';
+import genericErrorArt from '../assets/error-generic.png';
+import hangTightArt from '../assets/hang-tight.png';
 import type { CompositeResult, Profile, Template } from '../types';
 import './Processing.css';
 
@@ -66,38 +69,6 @@ function errorView(failure: CompositeError): ErrorView {
     default:
       return { title: 'Something went wrong', body: 'Something went wrong while creating your card.' };
   }
-}
-
-function FaceErrorArt({ variant }: { variant: 'none' | 'many' }) {
-  return (
-    <svg className="processing__art" viewBox="0 0 96 96" width="96" height="96" aria-hidden="true">
-      <circle cx="48" cy="48" r="46" fill="#efe7fb" />
-      {variant === 'none' ? (
-        <>
-          <circle cx="48" cy="42" r="16" fill="none" stroke="#4c3fbb" strokeWidth="3" />
-          <path d="M28 74c2-11 10-17 20-17s18 6 20 17" fill="none" stroke="#4c3fbb" strokeWidth="3" strokeLinecap="round" />
-          <path d="M20 20L76 76" stroke="#e0483c" strokeWidth="4" strokeLinecap="round" />
-        </>
-      ) : (
-        <>
-          <circle cx="38" cy="42" r="13" fill="none" stroke="#4c3fbb" strokeWidth="3" />
-          <circle cx="62" cy="42" r="13" fill="none" stroke="#4c3fbb" strokeWidth="3" />
-          <path d="M24 76c1-8 7-13 14-13s13 5 14 13" fill="none" stroke="#4c3fbb" strokeWidth="3" strokeLinecap="round" />
-          <path d="M44 76c1-8 7-13 14-13s13 5 14 13" fill="none" stroke="#4c3fbb" strokeWidth="3" strokeLinecap="round" />
-        </>
-      )}
-    </svg>
-  );
-}
-
-function GenericErrorArt() {
-  return (
-    <svg className="processing__art" viewBox="0 0 96 96" width="96" height="96" aria-hidden="true">
-      <circle cx="48" cy="48" r="46" fill="#fdeceb" />
-      <path d="M48 26v30" stroke="#e0483c" strokeWidth="6" strokeLinecap="round" />
-      <circle cx="48" cy="68" r="4" fill="#e0483c" />
-    </svg>
-  );
 }
 
 function Step({ label, state }: { label: string; state: 'pending' | 'active' | 'done' }) {
@@ -196,7 +167,7 @@ export function Processing({
     return (
       <div className="processing processing--error" role="alert">
         <AppBackground />
-        {faceVariant ? <FaceErrorArt variant={faceVariant} /> : <GenericErrorArt />}
+        <img className="processing__art" src={faceVariant ? faceScanArt : genericErrorArt} alt="" />
         <h2 className="processing__error-title">{view.title}</h2>
         <p className="processing__error-body">{view.body}</p>
         <div className="processing__error-actions">
@@ -229,9 +200,7 @@ export function Processing({
       <AppBackground />
       {handedOff ? (
         <div className="processing__finish">
-          <span className="processing__finish-badge" aria-hidden="true">
-            <span className="processing__spinner processing__spinner--lg" />
-          </span>
+          <img className="processing__finish-art" src={hangTightArt} alt="" aria-hidden="true" />
           <h2 className="processing__finish-title">Hang tight!</h2>
           <p className="processing__finish-text">
             Our AI is working its magic to bring you something special. Check back in a little while!

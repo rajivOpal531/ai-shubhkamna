@@ -9,11 +9,12 @@ type Props = {
 };
 
 export function Capture({ onCaptured, onBack, onUseUploadInstead }: Props) {
-  const { stream, error } = useCamera();
+  const { stream, error, facingMode, canSwitch, switchCamera } = useCamera();
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (videoRef.current && stream) {
+    // Also clears it (null) during a camera switch, so the stopped camera's last frame is not shown.
+    if (videoRef.current) {
       videoRef.current.srcObject = stream;
     }
   }, [stream]);
@@ -26,6 +27,7 @@ export function Capture({ onCaptured, onBack, onUseUploadInstead }: Props) {
     canvas.height = video.videoHeight || 1260;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    // Draws the raw frame, so a front-camera photo is NOT mirrored even though its preview is.
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob(
       (blob) => {
@@ -58,7 +60,14 @@ export function Capture({ onCaptured, onBack, onUseUploadInstead }: Props) {
         ×
       </button>
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-      <video ref={videoRef} autoPlay playsInline muted />
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        // Mirror the front-camera preview so it behaves like a mirror, as users expect from selfies.
+        style={facingMode === 'user' ? { transform: 'scaleX(-1)' } : undefined}
+      />
       <button
         type="button"
         className="capture__shutter"
@@ -66,6 +75,26 @@ export function Capture({ onCaptured, onBack, onUseUploadInstead }: Props) {
         onClick={handleShutter}
         disabled={!stream}
       />
+      {canSwitch && (
+        <button
+          type="button"
+          className="capture__switch"
+          aria-label="Switch camera"
+          onClick={switchCamera}
+          disabled={!stream}
+        >
+          <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
+            <path
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M20 11a8 8 0 0 0-14.3-4.9M4 5v4h4M4 13a8 8 0 0 0 14.3 4.9M20 19v-4h-4"
+            />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

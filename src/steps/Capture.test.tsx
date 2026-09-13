@@ -7,6 +7,17 @@ vi.mock('../hooks/useCamera', () => ({ useCamera: () => useCameraMock() }));
 
 import { Capture } from './Capture';
 
+function cameraState(overrides: Record<string, unknown> = {}) {
+  return {
+    stream: {} as MediaStream,
+    error: null,
+    facingMode: 'environment',
+    canSwitch: false,
+    switchCamera: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe('Capture', () => {
   beforeEach(() => {
     useCameraMock.mockReset();
@@ -17,7 +28,7 @@ describe('Capture', () => {
   });
 
   it('shows a fallback and lets the user switch to Upload when the camera errors', async () => {
-    useCameraMock.mockReturnValue({ stream: null, error: 'Permission denied' });
+    useCameraMock.mockReturnValue(cameraState({ stream: null, error: 'Permission denied' }));
     const onUseUploadInstead = vi.fn();
     render(<Capture onCaptured={vi.fn()} onBack={vi.fn()} onUseUploadInstead={onUseUploadInstead} />);
 
@@ -32,7 +43,7 @@ describe('Capture', () => {
     // matching the real-browser state the production readiness guard checks for.
     vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
 
-    useCameraMock.mockReturnValue({ stream: {} as MediaStream, error: null });
+    useCameraMock.mockReturnValue(cameraState());
     const onCaptured = vi.fn();
     render(<Capture onCaptured={onCaptured} onBack={vi.fn()} onUseUploadInstead={vi.fn()} />);
 
@@ -41,7 +52,7 @@ describe('Capture', () => {
   });
 
   it('calls onBack when close is clicked', async () => {
-    useCameraMock.mockReturnValue({ stream: {} as MediaStream, error: null });
+    useCameraMock.mockReturnValue(cameraState());
     const onBack = vi.fn();
     render(<Capture onCaptured={vi.fn()} onBack={onBack} onUseUploadInstead={vi.fn()} />);
 
@@ -50,9 +61,58 @@ describe('Capture', () => {
   });
 
   it('disables the shutter button while the camera has not resolved a stream yet', () => {
-    useCameraMock.mockReturnValue({ stream: null, error: null });
+    useCameraMock.mockReturnValue(cameraState({ stream: null }));
     render(<Capture onCaptured={vi.fn()} onBack={vi.fn()} onUseUploadInstead={vi.fn()} />);
 
     expect(screen.getByRole('button', { name: /shutter/i })).toBeDisabled();
+  });
+
+  it('switches camera when the switch button is pressed on a multi-camera device', async () => {
+    const switchCamera = vi.fn();
+    useCameraMock.mockReturnValue(cameraState({ canSwitch: true, switchCamera }));
+    render(<Capture onCaptured={vi.fn()} onBack={vi.fn()} onUseUploadInstead={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /switch camera/i }));
+    expect(switchCamera).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables the switch button while the other camera is opening', () => {
+    useCameraMock.mockReturnValue(cameraState({ stream: null, canSwitch: true }));
+    render(<Capture onCaptured={vi.fn()} onBack={vi.fn()} onUseUploadInstead={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: /switch camera/i })).toBeDisabled();
+  });
+
+  it('hides the switch button on a single-camera device', () => {
+    useCameraMock.mockReturnValue(cameraState({ canSwitch: false }));
+    render(<Capture onCaptured={vi.fn()} onBack={vi.fn()} onUseUploadInstead={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /switch camera/i })).not.toBeInTheDocument();
+  });
+
+  it('detaches the stopped camera from the preview while the other camera opens', () => {
+    const stream = {} as MediaStream;
+    useCameraMock.mockReturnValue(cameraState({ stream }));
+    const { container, rerender } = render(
+      <Capture onCaptured={vi.fn()} onBack={vi.fn()} onUseUploadInstead={vi.fn()} />,
+    );
+    const video = container.querySelector('video') as HTMLVideoElement;
+    expect(video.srcObject).toBe(stream);
+
+    useCameraMock.mockReturnValue(cameraState({ stream: null, canSwitch: true }));
+    rerender(<Capture onCaptured={vi.fn()} onBack={vi.fn()} onUseUploadInstead={vi.fn()} />);
+    expect(video.srcObject).toBeNull();
+  });
+
+  it('mirrors the live preview for the front camera only', () => {
+    useCameraMock.mockReturnValue(cameraState({ facingMode: 'user' }));
+    const { container, rerender } = render(
+      <Capture onCaptured={vi.fn()} onBack={vi.fn()} onUseUploadInstead={vi.fn()} />,
+    );
+    expect(container.querySelector('video')).toHaveStyle({ transform: 'scaleX(-1)' });
+
+    useCameraMock.mockReturnValue(cameraState({ facingMode: 'environment' }));
+    rerender(<Capture onCaptured={vi.fn()} onBack={vi.fn()} onUseUploadInstead={vi.fn()} />);
+    expect(container.querySelector('video')).not.toHaveStyle({ transform: 'scaleX(-1)' });
   });
 });

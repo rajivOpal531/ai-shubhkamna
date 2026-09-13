@@ -23,11 +23,11 @@ describe('Landing', () => {
   it('edits the name through the pencil popup', async () => {
     const props = renderLanding({ name: 'Old Name' });
     await userEvent.click(screen.getByRole('button', { name: /edit name/i }));
-    const dialog = screen.getByRole('dialog', { name: /edit display name/i });
+    const dialog = screen.getByRole('dialog', { name: /display name on the photo/i });
     const input = within(dialog).getByRole('textbox');
     await userEvent.clear(input);
     await userEvent.type(input, 'New Name');
-    await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+    await userEvent.click(within(dialog).getByRole('button', { name: /confirm/i }));
     expect(props.onNameChange).toHaveBeenCalledWith('New Name');
   });
 

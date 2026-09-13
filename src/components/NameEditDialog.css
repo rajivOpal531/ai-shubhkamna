@@ -24,26 +24,39 @@
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
 }
 
+/* Label/Large, centred */
 .name-edit__title {
-  margin: 0 0 14px;
-  font-size: 18px;
+  margin: 0 0 16px;
+  font-size: 16px;
   font-weight: 700;
-  color: #1a1a1a;
+  line-height: 24px;
+  color: var(--c-text);
+  text-align: center;
 }
 
 .name-edit__input {
   width: 100%;
   padding: 13px 14px;
-  border: 1.5px solid #e2ddd4;
+  border: 1px solid #e2ddd4;
   border-radius: 12px;
   font-size: 15px;
+  color: var(--c-text);
   box-sizing: border-box;
-  margin-bottom: 18px;
 }
 
 .name-edit__input:focus {
   outline: none;
-  border-color: #4c3fbb;
+  border-color: var(--c-main);
+}
+
+/* Bold/Text counter */
+.name-edit__count {
+  margin: 6px 2px 16px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  color: var(--c-subtext);
+  text-align: right;
 }
 
 .name-edit__actions {
@@ -51,23 +64,25 @@
   gap: 12px;
 }
 
+/* Button/Primary: 14 / 700 / 20 */
 .name-edit__actions button {
   flex: 1;
-  padding: 12px;
-  border-radius: 24px;
-  font-size: 15px;
-  font-weight: 600;
+  padding: 13px;
+  border-radius: 26px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
   cursor: pointer;
 }
 
-.name-edit__cancel {
-  background: #fff;
-  border: 1.5px solid #4c3fbb;
-  color: #4c3fbb;
+.name-edit__back {
+  background: var(--c-main);
+  border: 1.5px solid var(--c-main);
+  color: var(--c-white);
 }
 
-.name-edit__save {
-  background: #4c3fbb;
-  border: 1.5px solid #4c3fbb;
-  color: #fff;
+.name-edit__confirm {
+  background: var(--c-white);
+  border: 1.5px solid var(--c-main);
+  color: var(--c-main);
 }

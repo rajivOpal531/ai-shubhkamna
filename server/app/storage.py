@@ -14,9 +14,12 @@ S3_CONFIG = Config(
     connect_timeout=5,
     read_timeout=30,  # max body is 10 MB; 30 s is generous
     retries={"max_attempts": 3, "mode": "standard"},
+    # Path-style avoids the TLS SNI break on bucket names that contain dots
+    # (virtual-hosted "my.bucket.s3.region.amazonaws.com" fails the wildcard cert).
+    s3={"addressing_style": "path"},
 )
 PREFIX_PATTERN = re.compile(r"[A-Za-z0-9._\-/]*")
-BUCKET_PATTERN = re.compile(r"[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]")
+BUCKET_PATTERN = re.compile(r"[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]")
 
 
 class UploadError(RuntimeError):
@@ -70,7 +73,10 @@ class S3Uploader:
     def upload_jpeg(self, data: bytes) -> str:
         name = f"{uuid.uuid4().hex}.jpg"
         key = f"{self.prefix}/{name}" if self.prefix else name
-        extra: dict[str, Any] = {"ContentType": "image/jpeg"}
+        extra: dict[str, Any] = {
+            "ContentType": "image/jpeg",
+            "CacheControl": "public, max-age=31536000, immutable",
+        }
         if self.public_read_acl:
             extra["ACL"] = "public-read"
         try:

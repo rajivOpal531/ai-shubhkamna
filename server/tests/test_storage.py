@@ -88,7 +88,6 @@ def test_s3_uploader_wraps_client_errors(error):
     "bucket, region, prefix, match",
     [
         ("", "ap-south-1", "ai-shubh", "S3_BUCKET"),
-        ("cards.prod", "ap-south-1", "ai-shubh", "DNS-compatible"),
         ("MyBucket", "ap-south-1", "ai-shubh", "DNS-compatible"),
         ("a_b", "ap-south-1", "ai-shubh", "DNS-compatible"),
         ("cards", "", "ai-shubh", "AWS_REGION"),
@@ -173,3 +172,21 @@ _conforms: tuple[Uploader, Uploader, Uploader] = (
     S3Uploader("cards", "ap-south-1", client=FakeS3Client()),
     LocalUploader(Path("."), "http://localhost:8000"),
 )
+
+
+def test_s3_uploader_accepts_dotted_bucket_name():
+    class FakeClient:
+        def put_object(self, **kw):
+            self.kw = kw
+
+    client = FakeClient()
+    up = S3Uploader(
+        bucket="s3.narendramodi.in",
+        region="ap-southeast-1",
+        prefix="shubhkamna2026",
+        public_base_url="https://s3.narendramodi.in",
+        client=client,
+    )
+    url = up.upload_jpeg(b"data")
+    assert url.startswith("https://s3.narendramodi.in/shubhkamna2026/")
+    assert client.kw["CacheControl"] == "public, max-age=31536000, immutable"

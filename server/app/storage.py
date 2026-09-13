@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from pathlib import Path
 from typing import Any, Protocol
 
 import boto3
@@ -75,6 +76,23 @@ class S3Uploader:
         except (BotoCoreError, ClientError) as exc:
             raise UploadError(str(exc)) from exc
         return f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{key}"
+
+
+class LocalUploader:
+    """Dev-only: writes JPEGs to a directory that the app serves at /uploads."""
+
+    def __init__(self, directory: Path, base_url: str) -> None:
+        self.directory = Path(directory)
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self.base_url = base_url.rstrip("/")
+
+    def upload_jpeg(self, data: bytes) -> str:
+        name = f"{uuid.uuid4().hex}.jpg"
+        try:
+            (self.directory / name).write_bytes(data)
+        except OSError as exc:
+            raise UploadError(str(exc)) from exc
+        return f"{self.base_url}/uploads/{name}"
 
 
 class MemoryUploader:

@@ -90,6 +90,29 @@ pause before `/health` reports `model_loaded: true`. Subsequent starts reuse the
 `pytest` never triggers this download: tests inject a fake in-memory remover (see
 `tests/conftest.py`) instead of loading rembg.
 
+### Local end-to-end without AWS
+
+To exercise the full `/composite` flow — real ISNet model, real compositing, a served image URL —
+without any AWS credentials or bucket, set `STORAGE_BACKEND=local` and run the app from `server/`:
+
+```bash
+export STORAGE_BACKEND=local
+export ALLOWED_ORIGINS=http://localhost:5173
+./.venv/Scripts/python -m uvicorn app.main:create_app --factory --port 8000
+```
+
+Finished cards land in `server/local-uploads/` (override with `LOCAL_STORAGE_DIR`) and are served
+by this same process at `http://localhost:8000/uploads/<id>.jpg` (override the base with
+`PUBLIC_BASE_URL`). Point the frontend at this server by setting, in its `.env.local`:
+
+```
+VITE_COMPOSITE_URL=http://localhost:8000/composite
+VITE_USE_MOCK_COMPOSITE=false
+```
+
+This backend is for local testing only — never set `STORAGE_BACKEND=local` on Railway, since
+`local-uploads/` is not persisted or served across deploys/replicas there.
+
 ## Template geometry
 
 `templates/placements.json` holds hand-measured pixel boxes (`photo_box`, `text_box`, font size,
@@ -184,6 +207,9 @@ them yourself:
 | `MAX_CONCURRENT_COMPOSITES`       | Concurrent background-removal jobs allowed                              |
 | `JWT_VALIDATE_URL`                | Optional URL this service calls to validate the caller's bearer token    |
 | `REMBG_MODEL`                     | rembg model name; `isnet-general-use` is the one baked into the image    |
+| `STORAGE_BACKEND`                 | Local development only — never set on Railway. `s3` (default) or `local`; see "Local end-to-end without AWS" above |
+| `LOCAL_STORAGE_DIR`                | Local development only — never set on Railway. Directory `STORAGE_BACKEND=local` writes cards to |
+| `PUBLIC_BASE_URL`                  | Local development only — never set on Railway. Base URL `STORAGE_BACKEND=local` serves cards from |
 | `PORT`                            | Set by Railway, not by you; the container listens on it (default `8000` if unset). Not read by `app/config.py`. |
 | `U2NET_HOME`                      | Set in the Dockerfile to `/models`, where the ISNet weights are baked in at build time. Not read by `app/config.py` — it's how rembg finds the model without downloading it at runtime. Do not override. |
 

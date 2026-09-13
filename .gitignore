@@ -12,3 +12,4 @@ server/.env
 server/**/__pycache__/
 server/.pytest_cache/
 server/check-output/
+server/local-uploads/

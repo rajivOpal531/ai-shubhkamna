@@ -10,7 +10,12 @@ def test_health_reports_model_loaded_when_remover_injected():
     with TestClient(app) as client:
         response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "model_loaded": True, "uploader_ready": True}
+    assert response.json() == {
+        "status": "ok",
+        "model_loaded": True,
+        "uploader_ready": True,
+        "storage": "s3",
+    }
 
 
 def test_lifespan_builds_remover_from_settings_when_none_injected(monkeypatch):
@@ -55,10 +60,34 @@ def test_lifespan_builds_s3_uploader_from_settings_when_none_injected(monkeypatc
     app = create_app(settings=make_settings(s3_bucket="cards", aws_region="ap-south-1"))
     with TestClient(app) as client:
         response = client.get("/health")
-    assert response.json() == {"status": "ok", "model_loaded": True, "uploader_ready": True}
+    assert response.json() == {
+        "status": "ok",
+        "model_loaded": True,
+        "uploader_ready": True,
+        "storage": "s3",
+    }
     assert recorded == {
         "bucket": "cards",
         "region": "ap-south-1",
         "prefix": "ai-shubh",
         "public_read_acl": False,
+    }
+
+
+def test_lifespan_builds_local_uploader_when_backend_is_local(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.main.make_remover", lambda model_name: (lambda img: img))
+    app = create_app(
+        settings=make_settings(
+            storage_backend="local",
+            local_storage_dir=str(tmp_path / "uploads"),
+            public_base_url="http://localhost:8000",
+        )
+    )
+    with TestClient(app) as client:
+        response = client.get("/health")
+    assert response.json() == {
+        "status": "ok",
+        "model_loaded": True,
+        "uploader_ready": True,
+        "storage": "local",
     }

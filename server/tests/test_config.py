@@ -25,6 +25,24 @@ def test_defaults_when_env_is_empty():
     assert s.model_name == "isnet-general-use"
     assert s.max_concurrent_composites == 2
     assert s.max_field_chars == 120
+    assert s.storage_backend == "s3"
+    assert s.local_storage_dir == "local-uploads"
+    assert s.public_base_url == "http://localhost:8000"
+
+
+def test_storage_backend_local_parses():
+    s = load_settings(env={"STORAGE_BACKEND": "local"})
+    assert s.storage_backend == "local"
+
+
+def test_storage_backend_invalid_raises():
+    with pytest.raises(ValueError, match="STORAGE_BACKEND"):
+        load_settings(env={"STORAGE_BACKEND": "gcs"})
+
+
+def test_public_base_url_strips_trailing_slash():
+    s = load_settings(env={"PUBLIC_BASE_URL": "https://x.example/"})
+    assert s.public_base_url == "https://x.example"
 
 
 def test_parses_env_values():
@@ -41,6 +59,9 @@ def test_parses_env_values():
             "JWT_VALIDATE_URL": "https://api.example/validate",
             "REMBG_MODEL": "u2net",
             "MAX_CONCURRENT_COMPOSITES": "5",
+            "STORAGE_BACKEND": "local",
+            "LOCAL_STORAGE_DIR": "/tmp/uploads",
+            "PUBLIC_BASE_URL": "https://cdn.example/",
         }
     )
     assert s.aws_region == "ap-south-1"
@@ -54,3 +75,6 @@ def test_parses_env_values():
     assert s.jwt_validate_url == "https://api.example/validate"
     assert s.model_name == "u2net"
     assert s.max_concurrent_composites == 5
+    assert s.storage_backend == "local"
+    assert s.local_storage_dir == "/tmp/uploads"
+    assert s.public_base_url == "https://cdn.example"

@@ -21,6 +21,9 @@ class Settings:
     model_name: str
     max_concurrent_composites: int
     max_field_chars: int
+    storage_backend: str
+    local_storage_dir: str
+    public_base_url: str
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -35,6 +38,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ValueError("RATE_LIMIT_PER_IP_PER_MINUTE must be >= 1")
     if max_concurrent_composites < 1:
         raise ValueError("MAX_CONCURRENT_COMPOSITES must be >= 1")
+    storage_backend = env.get("STORAGE_BACKEND", "s3").strip()
+    if storage_backend not in ("s3", "local"):
+        raise ValueError("STORAGE_BACKEND must be 's3' or 'local'")
     return Settings(
         aws_region=env.get("AWS_REGION", ""),
         s3_bucket=env.get("S3_BUCKET", ""),
@@ -49,4 +55,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         model_name=env.get("REMBG_MODEL", "isnet-general-use"),
         max_concurrent_composites=max_concurrent_composites,
         max_field_chars=120,
+        storage_backend=storage_backend,
+        local_storage_dir=env.get("LOCAL_STORAGE_DIR", "local-uploads").strip(),
+        public_base_url=env.get("PUBLIC_BASE_URL", "http://localhost:8000").strip().rstrip("/"),
     )

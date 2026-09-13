@@ -1,7 +1,9 @@
+from pathlib import Path
+
 import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 
-from app.storage import MemoryUploader, S3Uploader, UploadError, Uploader
+from app.storage import LocalUploader, MemoryUploader, S3Uploader, UploadError, Uploader
 
 
 class FakeS3Client:
@@ -92,5 +94,51 @@ def test_memory_uploader_stores_bytes_and_returns_unique_urls():
     assert set(uploader.objects.values()) == {b"a", b"b"}
 
 
-# Type-checker-only conformance check: both uploaders satisfy the Uploader protocol.
-_conforms: tuple[Uploader, Uploader] = (MemoryUploader(), S3Uploader("cards", "ap-south-1", client=FakeS3Client()))
+def test_local_uploader_writes_file_and_returns_url(tmp_path):
+    directory = tmp_path / "uploads"
+    uploader = LocalUploader(directory, "http://localhost:8000")
+    url = uploader.upload_jpeg(b"jpegbytes")
+    assert url.startswith("http://localhost:8000/uploads/")
+    assert url.endswith(".jpg")
+    name = url.rsplit("/", 1)[-1]
+    assert (directory / name).read_bytes() == b"jpegbytes"
+
+
+def test_local_uploader_two_uploads_produce_different_urls(tmp_path):
+    uploader = LocalUploader(tmp_path / "uploads", "http://localhost:8000")
+    a = uploader.upload_jpeg(b"a")
+    b = uploader.upload_jpeg(b"b")
+    assert a != b
+
+
+def test_local_uploader_creates_directory_if_missing(tmp_path):
+    directory = tmp_path / "does" / "not" / "exist"
+    assert not directory.exists()
+    LocalUploader(directory, "http://localhost:8000")
+    assert directory.is_dir()
+
+
+def test_local_uploader_strips_trailing_slash_from_base_url(tmp_path):
+    uploader = LocalUploader(tmp_path / "uploads", "http://localhost:8000/")
+    url = uploader.upload_jpeg(b"x")
+    assert url.startswith("http://localhost:8000/uploads/")
+    assert "//uploads" not in url.replace("http://", "")
+
+
+def test_local_uploader_raises_upload_error_on_write_failure(monkeypatch, tmp_path):
+    uploader = LocalUploader(tmp_path / "uploads", "http://localhost:8000")
+
+    def boom(self, data):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_bytes", boom)
+    with pytest.raises(UploadError):
+        uploader.upload_jpeg(b"x")
+
+
+# Type-checker-only conformance check: all uploaders satisfy the Uploader protocol.
+_conforms: tuple[Uploader, Uploader, Uploader] = (
+    MemoryUploader(),
+    S3Uploader("cards", "ap-south-1", client=FakeS3Client()),
+    LocalUploader(Path("."), "http://localhost:8000"),
+)

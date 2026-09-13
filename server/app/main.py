@@ -6,6 +6,7 @@ import logging
 import uuid
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import anyio
@@ -17,6 +18,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -27,7 +29,7 @@ from .config import Settings, load_settings
 from .pipeline import BadImageError, NoSubjectError, TextFields, compose
 from .placements import Placement, load_placements
 from .remover import Remover, make_remover
-from .storage import S3Uploader, UploadError, Uploader
+from .storage import LocalUploader, S3Uploader, UploadError, Uploader
 
 log = logging.getLogger("ai-shubh")
 
@@ -170,6 +172,11 @@ def create_app(
         if parsed.scheme not in ("http", "https") or not parsed.host:
             raise ValueError("JWT_VALIDATE_URL is not a valid http(s) URL")
 
+    upload_dir: Path | None = None
+    if settings.storage_backend == "local":
+        upload_dir = Path(settings.local_storage_dir)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
     def http_client() -> httpx.AsyncClient:
         if runtime.http is None:
             raise TokenValidatorUnavailable("HTTP client not started")
@@ -184,12 +191,15 @@ def create_app(
         if runtime.remover is None:
             runtime.remover = make_remover(settings.model_name)
         if runtime.uploader is None:
-            runtime.uploader = S3Uploader(
-                bucket=settings.s3_bucket,
-                region=settings.aws_region,
-                prefix=settings.s3_prefix,
-                public_read_acl=settings.s3_public_read_acl,
-            )
+            if settings.storage_backend == "local":
+                runtime.uploader = LocalUploader(upload_dir, settings.public_base_url)
+            else:
+                runtime.uploader = S3Uploader(
+                    bucket=settings.s3_bucket,
+                    region=settings.aws_region,
+                    prefix=settings.s3_prefix,
+                    public_read_acl=settings.s3_public_read_acl,
+                )
         async with AsyncExitStack() as stack:
             # One client per process, and only when something actually validates tokens:
             # building it loads the system trust store, which is slow and pointless otherwise.
@@ -201,6 +211,10 @@ def create_app(
                 runtime.http = None
 
     app = FastAPI(title="AI Shubhkamna compositing", lifespan=lifespan)
+
+    if upload_dir is not None:
+        app.mount("/uploads", StaticFiles(directory=str(upload_dir)), name="uploads")
+
     composite_limiter = anyio.CapacityLimiter(settings.max_concurrent_composites)
     app.state.composite_limiter = composite_limiter
 
@@ -245,6 +259,7 @@ def create_app(
             "status": "ok",
             "model_loaded": runtime.remover is not None,
             "uploader_ready": runtime.uploader is not None,
+            "storage": settings.storage_backend,
         }
 
     # Both limits must pass. The bearer bucket is the one we care about, but it is keyed on an

@@ -463,3 +463,35 @@ def test_client_ip_key_parses_forwarded_header(headers, expected):
         }
     )
     assert client_ip_key(request) == expected
+
+
+def test_local_storage_backend_serves_uploaded_card(tmp_path):
+    """End to end with STORAGE_BACKEND=local and no uploader injected: create_app must build a
+    LocalUploader itself in lifespan, mount /uploads, and the served bytes/content-type must match
+    what compose() produced."""
+    settings = make_settings(
+        storage_backend="local",
+        local_storage_dir=str(tmp_path),
+        public_base_url="http://localhost:8000",
+    )
+    app = create_app(settings=settings, remover=fake_remover)
+    with TestClient(app) as client:
+        response = _post(client, name="Rajiv", constituency="Patna", state="Bihar")
+        assert response.status_code == 200, response.text
+        url = response.json()["imageUrl"]
+        assert url.startswith("http://localhost:8000/uploads/")
+
+        name = url.rsplit("/", 1)[-1]
+        assert (tmp_path / name).exists()
+
+        served = client.get(f"/uploads/{name}")
+        assert served.status_code == 200
+        assert served.headers["content-type"] == "image/jpeg"
+        assert served.content == (tmp_path / name).read_bytes()
+
+        missing = client.get("/uploads/missing.jpg")
+        assert missing.status_code == 404
+
+        health = client.get("/health")
+        assert health.json()["storage"] == "local"
+        assert health.json()["uploader_ready"] is True

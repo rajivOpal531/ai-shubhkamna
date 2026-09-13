@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { TemplateCarousel } from '../components/TemplateCarousel';
+import { Toast } from '../components/Toast';
 import { templates } from '../data/templates';
 import './Landing.css';
 
@@ -11,6 +12,8 @@ type Props = {
   onCapture: () => void;
   onFileSelected: (file: File) => void;
   onBack: () => void;
+  showProcessedToast?: boolean;
+  onDismissToast?: () => void;
 };
 
 export function Landing({
@@ -21,11 +24,19 @@ export function Landing({
   onCapture,
   onFileSelected,
   onBack,
+  showProcessedToast = false,
+  onDismissToast,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="landing">
+      {showProcessedToast && (
+        <Toast
+          message="The last photo you uploaded, has been processed successfully."
+          onDismiss={onDismissToast ?? (() => undefined)}
+        />
+      )}
       <header className="landing__header">
         <button type="button" aria-label="Back" onClick={onBack}>
           ←

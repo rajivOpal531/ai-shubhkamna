@@ -36,6 +36,7 @@ function Flow() {
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [processedToast, setProcessedToast] = useState(false);
 
   useEffect(() => {
     getProfile(jwt).then((fetched) => {
@@ -89,6 +90,8 @@ function Flow() {
           onCapture={() => setStep('tips')}
           onFileSelected={handleFileSelected}
           onBack={() => setShowExitConfirm(true)}
+          showProcessedToast={processedToast}
+          onDismissToast={() => setProcessedToast(false)}
         />
       )}
       {step === 'tips' && <Tips onProceed={() => setStep('capture')} onBack={() => setShowExitConfirm(true)} />}
@@ -103,6 +106,7 @@ function Flow() {
           profile={{ ...profile, username: name }}
           onComposited={(result) => {
             setComposited(result);
+            setProcessedToast(true);
             setStep('preview');
           }}
           onError={() => setStep('landing')}

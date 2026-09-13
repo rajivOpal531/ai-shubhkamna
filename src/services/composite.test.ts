@@ -50,6 +50,7 @@ describe('compositePhoto', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
+      headers: { get: (key: string) => (key.toLowerCase() === 'content-type' ? 'application/json' : (key === 'X-Request-Id' ? 'abc12345' : null)) },
       json: async () => ({ imageUrl: 'https://cards.s3.ap-south-1.amazonaws.com/ai-shubh/abc.jpg' }),
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -71,6 +72,44 @@ describe('compositePhoto', () => {
     expect((form.get('photo') as File).name).toBe('photo.jpg');
     expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
     expect(init.signal).toBeDefined();
+  });
+
+  it('returns an image blob when the compositing endpoint responds with image bytes (image mode)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (key: string) =>
+            key.toLowerCase() === 'content-type' ? 'image/jpeg' : key === 'X-Request-Id' ? 'abc12345' : null,
+        },
+        blob: async () => new Blob([new Uint8Array([255, 216, 255, 0])], { type: 'image/jpeg' }),
+      }),
+    );
+
+    const result = await compositePhoto(PARAMS, { useMock: false });
+
+    expect(result.imageBlob).toBeInstanceOf(Blob);
+    expect(result.imageUrl).toBeUndefined();
+  });
+
+  it('rejects with a CompositeError when the image-mode response body is empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (key: string) => (key.toLowerCase() === 'content-type' ? 'image/jpeg' : null),
+        },
+        blob: async () => new Blob([], { type: 'image/jpeg' }),
+      }),
+    );
+
+    const error = await compositePhoto(PARAMS, { useMock: false }).catch((err) => err);
+    expect(error).toBeInstanceOf(CompositeError);
+    expect((error as CompositeError).message).toContain('empty');
   });
 
   it('throws a CompositeError with status and request id when the compositing endpoint responds with a non-ok status', async () => {
@@ -126,7 +165,7 @@ describe('compositePhoto', () => {
       vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        headers: { get: () => null },
+        headers: { get: (key: string) => (key.toLowerCase() === 'content-type' ? 'application/json' : null) },
         json: async () => ({}),
       }),
     );
@@ -209,7 +248,10 @@ describe('compositePhoto', () => {
       vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        headers: { get: (key: string) => (key === 'X-Request-Id' ? 'r1' : null) },
+        headers: {
+          get: (key: string) =>
+            key.toLowerCase() === 'content-type' ? 'application/json' : key === 'X-Request-Id' ? 'r1' : null,
+        },
         json: async () => {
           throw new SyntaxError('bad');
         },
@@ -227,7 +269,7 @@ describe('compositePhoto', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      headers: { get: () => null },
+      headers: { get: (key: string) => (key.toLowerCase() === 'content-type' ? 'application/json' : null) },
       json: async () => ({ imageUrl: 'https://example.com/x.jpg' }),
     });
     vi.stubGlobal('fetch', fetchMock);

@@ -95,15 +95,28 @@ async function realCompositePhoto({
       );
     }
 
-    const data = (await response.json()) as { imageUrl?: unknown };
-    if (typeof data.imageUrl !== 'string' || !data.imageUrl) {
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      const data = (await response.json()) as { imageUrl?: unknown };
+      if (typeof data.imageUrl !== 'string' || !data.imageUrl) {
+        throw new CompositeError(
+          'Compositing response had no imageUrl',
+          response.status,
+          response.headers.get('X-Request-Id'),
+        );
+      }
+      return { imageUrl: data.imageUrl };
+    }
+
+    const blob = await response.blob();
+    if (!blob.size) {
       throw new CompositeError(
-        'Compositing response had no imageUrl',
+        'Compositing response was empty',
         response.status,
         response.headers.get('X-Request-Id'),
       );
     }
-    return { imageUrl: data.imageUrl };
+    return { imageBlob: blob };
   } catch (err) {
     if (err instanceof CompositeError) throw err;
     if (response) {

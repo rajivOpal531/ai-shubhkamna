@@ -29,6 +29,22 @@ def test_defaults_when_env_is_empty():
     assert s.storage_backend == "s3"
     assert s.local_storage_dir == "local-uploads"
     assert s.public_base_url == "http://localhost:8000"
+    assert s.response_mode == "image"
+
+
+def test_response_mode_url_parses():
+    s = load_settings(env={"RESPONSE_MODE": "url"})
+    assert s.response_mode == "url"
+
+
+def test_response_mode_invalid_raises():
+    with pytest.raises(ValueError, match="RESPONSE_MODE"):
+        load_settings(env={"RESPONSE_MODE": "ftp"})
+
+
+def test_response_mode_lowercases():
+    s = load_settings(env={"RESPONSE_MODE": "IMAGE"})
+    assert s.response_mode == "image"
 
 
 def test_storage_backend_local_parses():
@@ -86,3 +102,4 @@ def test_parses_env_values():
     assert s.storage_backend == "local"
     assert s.local_storage_dir == "/tmp/uploads"
     assert s.public_base_url == "https://cdn.example"
+    assert s.response_mode == "image"

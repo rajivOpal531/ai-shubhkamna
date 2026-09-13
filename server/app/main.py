@@ -190,7 +190,7 @@ def create_app(
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
         if runtime.remover is None:
             runtime.remover = make_remover(settings.model_name)
-        if runtime.uploader is None:
+        if runtime.uploader is None and settings.response_mode == "url":
             if settings.storage_backend == "local":
                 runtime.uploader = LocalUploader(upload_dir, settings.public_base_url)
             else:
@@ -261,6 +261,7 @@ def create_app(
             "model_loaded": runtime.remover is not None,
             "uploader_ready": runtime.uploader is not None,
             "storage": settings.storage_backend,
+            "response_mode": settings.response_mode,
         }
 
     # Both limits must pass. The bearer bucket is the one we care about, but it is keyed on an
@@ -277,7 +278,7 @@ def create_app(
         constituency: str = Form(""),
         state: str = Form(""),
         authorization: str = Header(""),
-    ) -> dict[str, str]:
+    ) -> Any:
         request_id = uuid.uuid4().hex[:8]
         rid = {"X-Request-Id": request_id}
 
@@ -294,7 +295,9 @@ def create_app(
 
         fields = TextFields(name=name, constituency=constituency, state=state)
         placement, data = await _validate_request(photo, template, fields, settings, placements, request_id)
-        if runtime.remover is None or runtime.uploader is None:
+        if runtime.remover is None:
+            raise HTTPException(status_code=503, detail="Service starting", headers=rid)
+        if settings.response_mode == "url" and runtime.uploader is None:
             raise HTTPException(status_code=503, detail="Service starting", headers=rid)
 
         log.info(
@@ -312,6 +315,9 @@ def create_app(
         try:
             async with composite_limiter:
                 jpeg = await run_in_threadpool(compose, data, placement, fields, runtime.remover)
+            if settings.response_mode == "image":
+                return Response(content=jpeg, media_type="image/jpeg", headers={"X-Request-Id": request_id})
+            assert runtime.uploader is not None
             url = await run_in_threadpool(runtime.uploader.upload_jpeg, jpeg)
         except BadImageError as exc:
             raise HTTPException(status_code=415, detail=str(exc), headers=rid) from exc

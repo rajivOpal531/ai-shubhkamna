@@ -25,6 +25,7 @@ class Settings:
     storage_backend: str
     local_storage_dir: str
     public_base_url: str
+    response_mode: str
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -42,6 +43,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     storage_backend = env.get("STORAGE_BACKEND", "s3").strip()
     if storage_backend not in ("s3", "local"):
         raise ValueError("STORAGE_BACKEND must be 's3' or 'local'")
+    response_mode = env.get("RESPONSE_MODE", "image").strip().lower()
+    if response_mode not in ("image", "url"):
+        raise ValueError("RESPONSE_MODE must be 'image' or 'url'")
     return Settings(
         aws_region=env.get("AWS_REGION", ""),
         s3_bucket=env.get("S3_BUCKET", ""),
@@ -60,4 +64,5 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         storage_backend=storage_backend,
         local_storage_dir=env.get("LOCAL_STORAGE_DIR", "local-uploads").strip(),
         public_base_url=env.get("PUBLIC_BASE_URL", "http://localhost:8000").strip().rstrip("/"),
+        response_mode=response_mode,
     )

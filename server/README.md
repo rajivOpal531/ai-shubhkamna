@@ -24,11 +24,18 @@ philosophy) see
 
 Header: `Authorization: Bearer <jwt>` (required).
 
-Success response, `200 OK`:
+Success response, `200 OK`, shape depends on `RESPONSE_MODE` (see the env table below):
 
-```json
-{ "imageUrl": "https://<bucket>.s3.<region>.amazonaws.com/<prefix>/<uuid>.jpg" }
-```
+- `RESPONSE_MODE=image` (default): the body is the finished card as raw JPEG bytes
+  (`Content-Type: image/jpeg`). The frontend posts these bytes as a file to the Media Wall's
+  Create Post 5.2 (`images` field, file upload) — no storage/S3 needed on this service at all.
+- `RESPONSE_MODE=url`: the card is uploaded to `STORAGE_BACKEND` and the body is JSON:
+
+  ```json
+  { "imageUrl": "https://<bucket>.s3.<region>.amazonaws.com/<prefix>/<uuid>.jpg" }
+  ```
+
+  The frontend posts this URL to Create Post 5.1.
 
 Every response this app produces carries an `X-Request-Id` header: an 8-character hex id, also
 logged server-side, that a caller can quote back in a support request. That covers the success
@@ -54,17 +61,19 @@ Error responses:
 | 422    | A text field is over 120 characters, no subject was found in the photo, or a required field/file is missing |
 | 429    | Rate limited (per bearer token or per source IP — see "Rate limiting") |
 | 500    | Unexpected server error; the detail message includes the request id    |
-| 502    | The finished JPEG could not be uploaded to S3                          |
-| 503    | The JWT validator is unreachable, the inference queue is overloaded, or the service is still starting (remover/uploader not built yet) |
+| 502    | The finished JPEG could not be uploaded to S3 (`RESPONSE_MODE=url` only) |
+| 503    | The JWT validator is unreachable, the inference queue is overloaded, or the service is still starting (remover, or in `url` mode the uploader, not built yet) |
 
 ### `GET /health`
 
 ```json
-{ "status": "ok", "model_loaded": true, "uploader_ready": true }
+{ "status": "ok", "model_loaded": true, "uploader_ready": false, "response_mode": "image" }
 ```
 
-`model_loaded`/`uploader_ready` are false only in the brief window before the lifespan finishes
-building the rembg session and the S3 client (or if they were never injected in a test).
+`model_loaded` is false only in the brief window before the lifespan finishes building the rembg
+session (or if it was never injected in a test). In `image` mode no uploader is ever built, so
+`uploader_ready` is always `false` there and can be ignored; in `url` mode it follows the same
+brief-startup-window rule as `model_loaded`, this time for the S3/local client.
 
 ## Local development
 
@@ -197,8 +206,9 @@ them yourself:
 
 | Variable                        | Purpose                                                                 |
 | -------------------------------- | ------------------------------------------------------------------------ |
-| `AWS_ACCESS_KEY_ID`               | S3 credentials                                                          |
-| `AWS_SECRET_ACCESS_KEY`           | S3 credentials                                                          |
+| `RESPONSE_MODE`                   | `image` (default) — `POST /composite` returns the JPEG bytes directly, no storage needed; the frontend posts the file via Create Post 5.2. `url` — uploads to `STORAGE_BACKEND` and returns `{ "imageUrl": ... }` for Create Post 5.1 |
+| `AWS_ACCESS_KEY_ID`               | S3 credentials (only needed when `RESPONSE_MODE=url` and `STORAGE_BACKEND=s3`) |
+| `AWS_SECRET_ACCESS_KEY`           | S3 credentials (only needed when `RESPONSE_MODE=url` and `STORAGE_BACKEND=s3`) |
 | `AWS_REGION`                      | Region the bucket lives in                                              |
 | `S3_BUCKET`                       | Destination bucket; must be a lowercase, DNS-compatible name and must live in `AWS_REGION` |
 | `S3_PREFIX`                       | Key prefix for uploaded cards (e.g. `ai-shubh`)                          |

@@ -64,3 +64,14 @@ def client(uploader):
     )
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def url_client(uploader):
+    app = create_app(
+        settings=make_settings(response_mode="url", rate_limit_per_ip_per_minute=1000),
+        remover=fake_remover,
+        uploader=uploader,
+    )
+    with TestClient(app) as test_client:
+        yield test_client

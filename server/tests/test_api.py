@@ -20,13 +20,33 @@ def _post(client, photo=None, template="card-2", headers=AUTH, **fields):
     return client.post("/composite", data=data, files={"photo": ("p.jpg", photo, "image/jpeg")}, headers=headers)
 
 
-def test_happy_path_returns_image_url_and_uploads_jpeg(client, uploader):
+def test_happy_path_returns_jpeg_bytes_in_image_mode(client, uploader):
     response = _post(client, name="Rajiv", constituency="Patna", state="Bihar")
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("image/jpeg")
+    assert response.content[:3] == b"\xff\xd8\xff"  # JPEG magic
+    assert re.match(r"^[0-9a-f]{8}$", response.headers["x-request-id"])
+    assert len(uploader.objects) == 0, "image mode must never touch the uploader"
+
+
+def test_happy_path_returns_image_url_in_url_mode(url_client, uploader):
+    response = _post(url_client, name="Rajiv", constituency="Patna", state="Bihar")
     assert response.status_code == 200, response.text
     url = response.json()["imageUrl"]
     assert url.startswith("https://example.test/mem/")
     assert len(uploader.objects) == 1
     assert next(iter(uploader.objects.values()))[:3] == b"\xff\xd8\xff"  # JPEG magic
+    assert re.match(r"^[0-9a-f]{8}$", response.headers["x-request-id"])
+
+
+def test_image_mode_needs_no_uploader_or_s3_config():
+    """No uploader injected and an empty s3_bucket: if lifespan tried to build an S3Uploader in
+    image mode this would raise (S3Uploader requires a bucket). It must not even try."""
+    app = create_app(settings=make_settings(response_mode="image"), remover=fake_remover)
+    with TestClient(app) as client:
+        response = _post(client)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/jpeg")
 
 
 def test_profile_fields_are_optional(client):
@@ -87,7 +107,7 @@ def test_upload_failure_is_502():
 
             raise UploadError("s3 down")
 
-    app = create_app(settings=make_settings(), remover=fake_remover, uploader=FailingUploader())
+    app = create_app(settings=make_settings(response_mode="url"), remover=fake_remover, uploader=FailingUploader())
     with TestClient(app) as client:
         response = _post(client)
     assert response.status_code == 502
@@ -470,6 +490,7 @@ def test_local_storage_backend_serves_uploaded_card(tmp_path):
     LocalUploader itself in lifespan, mount /uploads, and the served bytes/content-type must match
     what compose() produced."""
     settings = make_settings(
+        response_mode="url",
         storage_backend="local",
         local_storage_dir=str(tmp_path),
         public_base_url="http://localhost:8000",

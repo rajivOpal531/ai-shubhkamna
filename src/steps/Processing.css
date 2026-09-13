@@ -138,13 +138,70 @@
   gap: 12px;
 }
 
-.processing--error button {
-  padding: 12px 20px;
-  border-radius: 24px;
+/* ---- Round-2 rework: transparent bg (AppBackground provides it), hang-tight + error screens ---- */
+.processing {
+  background: transparent;
+  position: relative;
+  z-index: 1;
+}
+
+.processing__spinner--lg {
+  width: 34px;
+  height: 34px;
+  border-width: 4px;
+}
+
+.processing__finish-badge {
+  background: #ffffff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  animation: none;
+}
+
+.processing__art {
+  margin-bottom: 18px;
+}
+
+.processing__error-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1a1a1a;
+  margin: 0 0 8px;
+}
+
+.processing__error-body {
+  font-size: 15px;
+  line-height: 1.45;
+  color: #555;
+  max-width: 300px;
+  margin: 0 0 22px;
+}
+
+.processing__error-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 300px;
+  margin-top: 20px;
+}
+
+.processing__btn {
+  width: 100%;
+  padding: 13px 20px;
+  border-radius: 26px;
   border: none;
-  background: #4c3fbb;
-  color: #fff;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 8px;
+}
+
+.processing__btn--primary {
+  background: #4c3fbb;
+  color: #fff;
+}
+
+.processing__btn--ghost {
+  background: transparent;
+  color: #4c3fbb;
+  border: 1.5px solid #cfc7f0;
 }

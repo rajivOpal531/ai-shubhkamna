@@ -1,6 +1,8 @@
 .landing {
   min-height: 100vh;
-  background: #fbf5ee;
+  background: transparent;
+  position: relative;
+  z-index: 1;
   padding: 16px;
 }
 

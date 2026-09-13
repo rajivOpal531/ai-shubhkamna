@@ -1,6 +1,8 @@
 .tips {
   min-height: 100vh;
-  background: #fbf5ee;
+  background: transparent;
+  position: relative;
+  z-index: 1;
   padding: 0 16px 24px;
   display: flex;
   flex-direction: column;
@@ -43,17 +45,20 @@
 }
 
 .tips__illustration {
-  width: 180px;
-  height: 180px;
+  width: 168px;
+  height: 168px;
   border-radius: 50%;
-  background: #f0e7db radial-gradient(circle at 50% 40%, #fff6ea, #ece0cf);
-  margin: 0 auto 20px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tips__card {
   background: #ffffff;
   border-radius: 16px;
-  padding: 20px 20px 8px;
+  padding: 20px 20px 12px;
+  margin-bottom: 20px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
 }
 

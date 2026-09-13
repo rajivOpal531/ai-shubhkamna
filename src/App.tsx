@@ -90,8 +90,6 @@ function Flow() {
           onCapture={() => setStep('tips')}
           onFileSelected={handleFileSelected}
           onBack={() => setShowExitConfirm(true)}
-          showProcessedToast={processedToast}
-          onDismissToast={() => setProcessedToast(false)}
         />
       )}
       {step === 'tips' && (
@@ -119,12 +117,14 @@ function Flow() {
           photo={photo}
           template={selectedTemplate}
           profile={{ ...profile, username: name }}
+          photoSource={photoSource}
           onComposited={(result) => {
             setComposited(result);
             setProcessedToast(true);
             setStep('preview');
           }}
           onError={() => setStep('landing')}
+          onHome={() => redirectWithJwt(config.homeUrl, jwt)}
         />
       )}
       {step === 'preview' && composited && (
@@ -135,6 +135,8 @@ function Flow() {
           posting={posting}
           postError={postError}
           photoSource={photoSource}
+          showProcessedToast={processedToast}
+          onDismissToast={() => setProcessedToast(false)}
           onRetake={() => setStep('landing')}
           onPost={handlePost}
         />

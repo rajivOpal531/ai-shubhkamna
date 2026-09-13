@@ -1,6 +1,8 @@
 .preview {
   min-height: 100vh;
-  background: #fbf5ee;
+  background: transparent;
+  position: relative;
+  z-index: 1;
   padding: 0 16px 24px;
 }
 

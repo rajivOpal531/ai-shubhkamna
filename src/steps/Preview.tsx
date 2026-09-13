@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { CompositeResult } from '../types';
 import { InspireMeSheet } from '../components/InspireMeSheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { Toast } from '../components/Toast';
+import { AppBackground } from '../components/AppBackground';
 import { WISH_HASHTAGS, WISH_MAX_LENGTH } from '../data/wishes';
 import './Preview.css';
 
@@ -12,6 +14,8 @@ type Props = {
   posting: boolean;
   postError: string | null;
   photoSource: 'upload' | 'capture';
+  showProcessedToast?: boolean;
+  onDismissToast?: () => void;
   onRetake: () => void;
   onPost: () => void;
 };
@@ -23,6 +27,8 @@ export function Preview({
   posting,
   postError,
   photoSource,
+  showProcessedToast = false,
+  onDismissToast,
   onRetake,
   onPost,
 }: Props) {
@@ -46,6 +52,13 @@ export function Preview({
 
   return (
     <div className="preview">
+      <AppBackground />
+      {showProcessedToast && (
+        <Toast
+          message="The last photo you uploaded has been processed successfully."
+          onDismiss={onDismissToast ?? (() => undefined)}
+        />
+      )}
       <header className="preview__header">
         <button type="button" className="preview__back" aria-label="Back" onClick={onRetake} disabled={posting}>
           ←

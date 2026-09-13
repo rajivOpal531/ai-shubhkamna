@@ -24,6 +24,9 @@ export class CompositeError extends Error {
     readonly status: number | null,
     readonly requestId: string | null,
     kind?: 'http' | 'network' | 'config',
+    // Machine-readable detail code from the server body for 4xx responses
+    // (e.g. "no_face", "multiple_faces", "no_subject"); null when absent.
+    readonly code: string | null = null,
   ) {
     super(message);
     this.name = 'CompositeError';
@@ -88,10 +91,21 @@ async function realCompositePhoto({
     });
 
     if (!response.ok) {
+      // Best-effort: the backend returns { detail: "<code>" } for 4xx so we can show a
+      // specific message (no face / multiple faces / photo too large, etc.).
+      let code: string | null = null;
+      try {
+        const body = (await response.clone().json()) as { detail?: unknown };
+        if (typeof body?.detail === 'string') code = body.detail;
+      } catch {
+        // non-JSON body (e.g. a plain 413 from the proxy) -- leave code null
+      }
       throw new CompositeError(
         `Compositing failed with status ${response.status}`,
         response.status,
         response.headers.get('X-Request-Id'),
+        undefined,
+        code,
       );
     }
 

@@ -199,6 +199,7 @@ def create_app(
                     region=settings.aws_region,
                     prefix=settings.s3_prefix,
                     public_read_acl=settings.s3_public_read_acl,
+                    public_base_url=settings.s3_public_base_url,
                 )
         async with AsyncExitStack() as stack:
             # One client per process, and only when something actually validates tokens:

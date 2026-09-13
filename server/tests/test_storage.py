@@ -31,6 +31,37 @@ def test_s3_uploader_puts_jpeg_and_returns_public_url():
     assert url == f"https://cards.s3.ap-south-1.amazonaws.com/{call['Key']}"
 
 
+def test_s3_uploader_returns_cdn_url_when_public_base_url_set():
+    client = FakeS3Client()
+    uploader = S3Uploader(
+        bucket="cards",
+        region="ap-south-1",
+        prefix="shubhkamna2026",
+        public_base_url="https://cdn.narendramodi.in/",
+        client=client,
+    )
+    url = uploader.upload_jpeg(b"jpegbytes")
+    call = client.calls[0]
+    assert call["Key"].startswith("shubhkamna2026/")
+    assert url.startswith("https://cdn.narendramodi.in/shubhkamna2026/")
+    assert url.endswith(".jpg")
+    assert "s3.amazonaws.com" not in url
+
+
+def test_s3_uploader_uses_virtual_hosted_url_when_public_base_url_empty():
+    client = FakeS3Client()
+    uploader = S3Uploader(
+        bucket="cards",
+        region="ap-south-1",
+        prefix="ai-shubh",
+        public_base_url="",
+        client=client,
+    )
+    url = uploader.upload_jpeg(b"jpegbytes")
+    call = client.calls[0]
+    assert url == f"https://cards.s3.ap-south-1.amazonaws.com/{call['Key']}"
+
+
 def test_s3_uploader_sets_public_read_acl_when_enabled():
     client = FakeS3Client()
     uploader = S3Uploader(bucket="cards", region="ap-south-1", prefix="", public_read_acl=True, client=client)

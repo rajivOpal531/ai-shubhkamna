@@ -12,6 +12,7 @@ class Settings:
     s3_bucket: str
     s3_prefix: str
     s3_public_read_acl: bool
+    s3_public_base_url: str
     allowed_origins: list[str]
     rate_limit_per_minute: int
     rate_limit_per_ip_per_minute: int
@@ -46,6 +47,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         s3_bucket=env.get("S3_BUCKET", ""),
         s3_prefix=env.get("S3_PREFIX", "ai-shubh").strip("/"),
         s3_public_read_acl=env.get("S3_PUBLIC_READ_ACL", "false").strip().lower() == "true",
+        s3_public_base_url=env.get("S3_PUBLIC_BASE_URL", "").strip().rstrip("/"),
         allowed_origins=origins,
         rate_limit_per_minute=rate_limit_per_minute,
         rate_limit_per_ip_per_minute=rate_limit_per_ip_per_minute,

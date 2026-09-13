@@ -45,6 +45,7 @@ class S3Uploader:
         region: str,
         prefix: str = "ai-shubh",
         public_read_acl: bool = False,
+        public_base_url: str = "",
         client: S3ClientLike | None = None,
     ) -> None:
         if not bucket:
@@ -61,6 +62,7 @@ class S3Uploader:
         self.region = region
         self.prefix = prefix.strip("/")
         self.public_read_acl = public_read_acl
+        self.public_base_url = public_base_url.rstrip("/")
         self.client: S3ClientLike = client if client is not None else boto3.client(
             "s3", region_name=region, config=S3_CONFIG
         )
@@ -75,6 +77,8 @@ class S3Uploader:
             self.client.put_object(Bucket=self.bucket, Key=key, Body=data, **extra)
         except (BotoCoreError, ClientError) as exc:
             raise UploadError(str(exc)) from exc
+        if self.public_base_url:
+            return f"{self.public_base_url}/{key}"
         return f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{key}"
 
 

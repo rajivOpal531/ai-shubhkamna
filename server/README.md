@@ -187,6 +187,9 @@ The container drops to a non-root user (uid 10001) after the build steps, and it
 with an explicit `exec`, so uvicorn runs as PID 1 and receives Railway's `SIGTERM` directly on
 redeploy or shutdown rather than having it swallowed by a wrapper shell.
 
+Set `S3_PUBLIC_BASE_URL` to the CDN origin fronting the bucket (e.g. `https://cdn.narendramodi.in`)
+so the Media Wall can fetch cards.
+
 Environment variables to set on the Railway service. Everything down to `REMBG_MODEL` is read by
 the app (`app/config.py`) or by boto3 directly (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`); the
 last two are read by the container/image, not by `app/config.py`, and you should not need to set
@@ -200,6 +203,7 @@ them yourself:
 | `S3_BUCKET`                       | Destination bucket; must be a lowercase, DNS-compatible name and must live in `AWS_REGION` |
 | `S3_PREFIX`                       | Key prefix for uploaded cards (e.g. `ai-shubh`)                          |
 | `S3_PUBLIC_READ_ACL`              | `true`/`false` — whether uploaded objects get a public-read ACL          |
+| `S3_PUBLIC_BASE_URL`              | Optional; CDN/base URL for returned image links (e.g. `https://cdn.example.com`) — when empty, the raw S3 URL is returned |
 | `ALLOWED_ORIGINS`                 | Comma-separated browser origins allowed to call this service            |
 | `RATE_LIMIT_PER_MINUTE`           | Per-bearer-token limit for `POST /composite`                             |
 | `RATE_LIMIT_PER_IP_PER_MINUTE`    | Per-source-IP limit; see "Rate limiting" above                          |

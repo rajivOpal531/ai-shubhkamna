@@ -47,11 +47,12 @@ def test_lifespan_builds_s3_uploader_from_settings_when_none_injected(monkeypatc
     recorded = {}
 
     class FakeS3Uploader:
-        def __init__(self, bucket, region, prefix, public_read_acl):
+        def __init__(self, bucket, region, prefix, public_read_acl, public_base_url):
             recorded["bucket"] = bucket
             recorded["region"] = region
             recorded["prefix"] = prefix
             recorded["public_read_acl"] = public_read_acl
+            recorded["public_base_url"] = public_base_url
 
         def upload_jpeg(self, data: bytes) -> str:
             return "https://cards.s3.ap-south-1.amazonaws.com/fake.jpg"
@@ -71,6 +72,7 @@ def test_lifespan_builds_s3_uploader_from_settings_when_none_injected(monkeypatc
         "region": "ap-south-1",
         "prefix": "ai-shubh",
         "public_read_acl": False,
+        "public_base_url": "",
     }
 
 

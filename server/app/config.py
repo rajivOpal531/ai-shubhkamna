@@ -26,6 +26,9 @@ class Settings:
     local_storage_dir: str
     public_base_url: str
     response_mode: str
+    jwt_signing_secret: str
+    profile_key_secret: str
+    profile_iv_secret: str
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -65,4 +68,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         local_storage_dir=env.get("LOCAL_STORAGE_DIR", "local-uploads").strip(),
         public_base_url=env.get("PUBLIC_BASE_URL", "http://localhost:8000").strip().rstrip("/"),
         response_mode=response_mode,
+        jwt_signing_secret=env.get("USER_JWT_TOKEN_SECRET_KEY", "").strip(),
+        profile_key_secret=env.get("PROFILE_DECRYPT_KEY", "").strip(),
+        profile_iv_secret=env.get("PROFILE_DECRYPT_IV", "").strip(),
     )

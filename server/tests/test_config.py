@@ -30,6 +30,9 @@ def test_defaults_when_env_is_empty():
     assert s.local_storage_dir == "local-uploads"
     assert s.public_base_url == "http://localhost:8000"
     assert s.response_mode == "image"
+    assert s.jwt_signing_secret == ""
+    assert s.profile_key_secret == ""
+    assert s.profile_iv_secret == ""
 
 
 def test_response_mode_url_parses():
@@ -103,3 +106,16 @@ def test_parses_env_values():
     assert s.local_storage_dir == "/tmp/uploads"
     assert s.public_base_url == "https://cdn.example"
     assert s.response_mode == "image"
+
+
+def test_profile_secrets_parse_and_strip():
+    s = load_settings(
+        env={
+            "USER_JWT_TOKEN_SECRET_KEY": " a-uuid-signing-secret ",
+            "PROFILE_DECRYPT_KEY": " a-32-char-profile-key ",
+            "PROFILE_DECRYPT_IV": " a-short-iv ",
+        }
+    )
+    assert s.jwt_signing_secret == "a-uuid-signing-secret"
+    assert s.profile_key_secret == "a-32-char-profile-key"
+    assert s.profile_iv_secret == "a-short-iv"

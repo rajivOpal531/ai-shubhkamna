@@ -64,6 +64,45 @@ Error responses:
 | 502    | The finished JPEG could not be uploaded to S3 (`RESPONSE_MODE=url` only) |
 | 503    | The JWT validator is unreachable, the inference queue is overloaded, or the service is still starting (remover, or in `url` mode the uploader, not built yet) |
 
+### `GET /profile`
+
+Lets the frontend prefill name/constituency/state without ever handling the decryption itself. The
+user's JWT carries a `data` claim: base64 AES-256-CBC ciphertext, encrypted with a static
+key/IV shared across all users by the upstream platform. Decrypting that client-side would let any
+user decrypt any other user's profile (same key for everyone), so this route does it server-side
+and returns only the plaintext fields the frontend needs.
+
+Header: `Authorization: Bearer <jwt>` (required).
+
+Success response, `200 OK`:
+
+```json
+{
+  "username": "Rajiv Ranjan",
+  "email": "rajiv@example.com",
+  "mobileno": "9876543210",
+  "state": "Bihar",
+  "constituency": "Patna Sahib",
+  "district": "Patna"
+}
+```
+
+Missing keys in the decrypted profile map to `""`; extra keys (`usertype`, `image`, `gender`, ...)
+are dropped.
+
+Error responses:
+
+| Status | Cause                                                                          |
+| ------ | -------------------------------------------------------------------------------- |
+| 401    | Missing/malformed bearer token, the JWT signature doesn't verify, or it's expired |
+| 422    | The JWT has no `data` claim                                                       |
+| 502    | The `data` claim could not be decrypted or did not decode to valid JSON           |
+| 503    | `USER_JWT_TOKEN_SECRET_KEY` / `PROFILE_DECRYPT_KEY` / `PROFILE_DECRYPT_IV` are not all configured — the endpoint is disabled rather than the service refusing to start |
+
+Same two-limit rate-limiting shape as `/composite` (per bearer token and per source IP; see "Rate
+limiting" below), and every response carries `X-Request-Id`. The decrypted profile is never logged
+— only the request id and a truncated hash of the bearer token, same as `/composite`.
+
 ### `GET /health`
 
 ```json
@@ -226,6 +265,9 @@ them yourself:
 | `PUBLIC_BASE_URL`                  | Local development only — never set on Railway. Base URL `STORAGE_BACKEND=local` serves cards from |
 | `PORT`                            | Set by Railway, not by you; the container listens on it (default `8000` if unset). Not read by `app/config.py`. |
 | `U2NET_HOME`                      | Set in the Dockerfile to `/models`, where the ISNet weights are baked in at build time. Not read by `app/config.py` — it's how rembg finds the model without downloading it at runtime. Do not override. |
+| `USER_JWT_TOKEN_SECRET_KEY`        | Server-only. Enables `GET /profile`. Signing secret used to verify the user JWT's HS256 signature. Leave unset to keep the endpoint disabled (`503`). Never send to the browser. |
+| `PROFILE_DECRYPT_KEY`              | Server-only. Enables `GET /profile`. Shared secret used to derive the AES-256 key for the JWT's encrypted `data` claim. Never send to the browser. |
+| `PROFILE_DECRYPT_IV`               | Server-only. Enables `GET /profile`. Shared secret used to derive the AES IV for the same claim. Never send to the browser. |
 
 On the frontend, point the app at this deployment:
 

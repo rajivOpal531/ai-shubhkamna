@@ -11,6 +11,7 @@ from typing import Any, Awaitable, Callable
 
 import anyio
 import httpx
+import jwt
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
@@ -28,6 +29,7 @@ from .body_limit import BodyLimitMiddleware
 from .config import Settings, load_settings
 from .pipeline import BadImageError, NoSubjectError, TextFields, compose
 from .placements import Placement, load_placements
+from .profile import ProfileError, decrypt_profile, profile_from_claims
 from .remover import Remover, make_remover
 from .storage import LocalUploader, S3Uploader, UploadError, Uploader
 
@@ -262,6 +264,59 @@ def create_app(
             "uploader_ready": runtime.uploader is not None,
             "storage": settings.storage_backend,
             "response_mode": settings.response_mode,
+        }
+
+    # Same two-limit shape as /composite (see below): both must pass.
+    @app.get("/profile")
+    @limiter.limit(f"{settings.rate_limit_per_minute}/minute")  # per bearer token (rate_limit_key)
+    @limiter.limit(f"{settings.rate_limit_per_ip_per_minute}/minute", key_func=client_ip_key)  # per source IP
+    async def get_profile(
+        request: Request,
+        response: Response,
+        authorization: str = Header(""),
+    ) -> Any:
+        request_id = uuid.uuid4().hex[:8]
+        rid = {"X-Request-Id": request_id}
+
+        if not (settings.jwt_signing_secret and settings.profile_key_secret and settings.profile_iv_secret):
+            raise HTTPException(status_code=503, detail="Profile lookup is not configured", headers=rid)
+
+        token = _bearer(authorization)
+        if not token:
+            raise HTTPException(status_code=401, detail="Missing bearer token", headers=rid)
+
+        try:
+            payload = jwt.decode(token, settings.jwt_signing_secret, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError as exc:
+            raise HTTPException(status_code=401, detail="Token expired", headers=rid) from exc
+        except jwt.InvalidTokenError as exc:
+            raise HTTPException(status_code=401, detail="Invalid token", headers=rid) from exc
+
+        data_claim = payload.get("data")
+        if not data_claim:
+            raise HTTPException(status_code=422, detail="Token has no profile data", headers=rid)
+
+        log.info(
+            "profile req=%s jwt=%s",
+            request_id,
+            hashlib.sha256(token.encode()).hexdigest()[:12],
+        )
+
+        try:
+            decrypted = decrypt_profile(data_claim, settings.profile_key_secret, settings.profile_iv_secret)
+            profile = profile_from_claims(decrypted)
+        except ProfileError as exc:
+            log.error("profile req=%s could not read profile: %s", request_id, exc)
+            raise HTTPException(status_code=502, detail="Could not read profile", headers=rid) from exc
+
+        response.headers["X-Request-Id"] = request_id
+        return {
+            "username": profile.username,
+            "email": profile.email,
+            "mobileno": profile.mobileno,
+            "state": profile.state,
+            "constituency": profile.constituency,
+            "district": profile.district,
         }
 
     # Both limits must pass. The bearer bucket is the one we care about, but it is keyed on an

@@ -30,6 +30,7 @@ function Flow() {
   const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
   const [templateId, setTemplateId] = useState(templates[0].id);
   const [photo, setPhoto] = useState<Blob | null>(null);
+  const [photoSource, setPhotoSource] = useState<'upload' | 'capture'>('upload');
   const [composited, setComposited] = useState<CompositeResult | null>(null);
   const [wish, setWish] = useState('');
   const [posting, setPosting] = useState(false);
@@ -49,11 +50,13 @@ function Flow() {
 
   function handleFileSelected(file: File) {
     setPhoto(file);
+    setPhotoSource('upload');
     setStep('processing');
   }
 
   function handleCaptured(blob: Blob) {
     setPhoto(blob);
+    setPhotoSource('capture');
     setStep('processing');
   }
 
@@ -112,6 +115,7 @@ function Flow() {
           onWishChange={setWish}
           posting={posting}
           postError={postError}
+          photoSource={photoSource}
           onRetake={() => setStep('landing')}
           onPost={handlePost}
         />

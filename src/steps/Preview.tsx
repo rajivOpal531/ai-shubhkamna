@@ -1,14 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { CompositeResult } from '../types';
+import { InspireMeSheet } from '../components/InspireMeSheet';
+import { WISH_HASHTAGS, WISH_MAX_LENGTH } from '../data/wishes';
 import './Preview.css';
-
-const INSPIRE_MESSAGES = [
-  "Happy Birthday to PM Shri Narendra Modi! Your visionary leadership and dedication to our nation's growth and development continue to inspire us all. Wish you many more years of service to the country.",
-  'Wishing our PM a very Happy Birthday! Thank you for your tireless service to the nation.',
-  'Happy Birthday PM Modi Ji! May you continue to lead India towards new heights.',
-];
-
-const WISH_MAX_LENGTH = 200;
 
 type Props = {
   composited: CompositeResult;
@@ -16,13 +10,23 @@ type Props = {
   onWishChange: (value: string) => void;
   posting: boolean;
   postError: string | null;
+  photoSource: 'upload' | 'capture';
   onRetake: () => void;
   onPost: () => void;
 };
 
-export function Preview({ composited, wish, onWishChange, posting, postError, onRetake, onPost }: Props) {
-  const [inspireIndex, setInspireIndex] = useState(0);
+export function Preview({
+  composited,
+  wish,
+  onWishChange,
+  posting,
+  postError,
+  photoSource,
+  onRetake,
+  onPost,
+}: Props) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     if (!composited.imageBlob) {
@@ -35,36 +39,49 @@ export function Preview({ composited, wish, onWishChange, posting, postError, on
   }, [composited.imageBlob]);
 
   const previewSrc = composited.imageUrl ?? blobUrl ?? '';
-
-  function handleInspireMe() {
-    const message = INSPIRE_MESSAGES[inspireIndex % INSPIRE_MESSAGES.length];
-    const nextIndex = inspireIndex + 1;
-    const isUserEditedText = wish.length > 0 && !INSPIRE_MESSAGES.includes(wish);
-    if (!isUserEditedText) {
-      onWishChange(message.slice(0, WISH_MAX_LENGTH));
-    }
-    setInspireIndex(nextIndex);
-  }
+  const atLimit = wish.length >= WISH_MAX_LENGTH;
+  const retakeLabel = photoSource === 'capture' ? 'Retake' : 'Reupload';
 
   return (
     <div className="preview">
+      <header className="preview__header">
+        <button type="button" className="preview__back" aria-label="Back" onClick={onRetake} disabled={posting}>
+          ←
+        </button>
+        <h1>AI Shubhkamna</h1>
+      </header>
+
       <img className="preview__card" src={previewSrc} alt="Your birthday card" />
 
-      <h3>Wishes for PM Modi</h3>
-      <textarea
-        value={wish}
-        onChange={(event) => onWishChange(event.target.value.slice(0, WISH_MAX_LENGTH))}
-        placeholder="Write your birthday wish for PM Modi"
-      />
-      <p>
-        #HappyBirthdayPMModi #HappyBirthdayModiJi{' '}
-        <button type="button" onClick={handleInspireMe}>
-          Inspire me
-        </button>
-      </p>
-      <p>
-        {wish.length}/{WISH_MAX_LENGTH}
-      </p>
+      <h2 className="preview__title">Wishes for PM Modi</h2>
+
+      <div className={`preview__field${atLimit ? ' preview__field--error' : ''}`}>
+        <textarea
+          value={wish}
+          maxLength={WISH_MAX_LENGTH}
+          onChange={(event) => onWishChange(event.target.value.slice(0, WISH_MAX_LENGTH))}
+          placeholder="Write your birthday wish for PM Modi"
+        />
+        <div className="preview__field-footer">
+          <span className="preview__hashtags">{WISH_HASHTAGS}</span>
+          <button type="button" className="preview__inspire" onClick={() => setSheetOpen(true)}>
+            Inspire me
+          </button>
+        </div>
+      </div>
+
+      <div className="preview__meta">
+        {atLimit ? (
+          <span className="preview__limit" role="alert">
+            Maximum character limit exceeded
+          </span>
+        ) : (
+          <span />
+        )}
+        <span className={`preview__count${atLimit ? ' preview__count--error' : ''}`}>
+          {wish.length}/{WISH_MAX_LENGTH}
+        </span>
+      </div>
 
       {postError && (
         <p className="preview__error" role="alert">
@@ -73,13 +90,24 @@ export function Preview({ composited, wish, onWishChange, posting, postError, on
       )}
 
       <div className="preview__actions">
-        <button type="button" onClick={onRetake} disabled={posting}>
-          Retake
+        <button type="button" className="preview__retake" onClick={onRetake} disabled={posting}>
+          {retakeLabel}
         </button>
-        <button type="button" onClick={onPost} disabled={posting}>
+        <button type="button" className="preview__post" onClick={onPost} disabled={posting}>
           {posting ? 'Posting…' : 'Post'}
         </button>
       </div>
+
+      {sheetOpen && (
+        <InspireMeSheet
+          selected={wish}
+          onSelect={(message) => {
+            onWishChange(message.slice(0, WISH_MAX_LENGTH));
+            setSheetOpen(false);
+          }}
+          onClose={() => setSheetOpen(false)}
+        />
+      )}
     </div>
   );
 }

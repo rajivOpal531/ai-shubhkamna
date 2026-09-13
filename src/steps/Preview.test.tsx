@@ -10,6 +10,7 @@ function renderPreview(overrides: Partial<React.ComponentProps<typeof Preview>> 
     onWishChange: vi.fn(),
     posting: false,
     postError: null,
+    photoSource: 'upload' as const,
     onRetake: vi.fn(),
     onPost: vi.fn(),
     ...overrides,
@@ -36,17 +37,63 @@ describe('Preview', () => {
     expect(lastCall.length).toBeLessThanOrEqual(200);
   });
 
-  it('fills the wish field with a preset message when Inspire me is clicked', async () => {
+  it('shows the passive hashtags inside the field', () => {
+    renderPreview();
+    expect(screen.getByText('#HappyBirthdayPMModi #HappyBirthdayModiJi')).toBeInTheDocument();
+  });
+
+  it('opens the Popular Messages sheet and applies a selected message', async () => {
     const onWishChange = vi.fn();
     renderPreview({ onWishChange });
     await userEvent.click(screen.getByRole('button', { name: /inspire me/i }));
-    expect(onWishChange).toHaveBeenCalledWith(expect.stringMatching(/\w+/));
+    expect(screen.getByRole('dialog', { name: /popular messages/i })).toBeInTheDocument();
+    const options = screen.getAllByRole('radio');
+    expect(options.length).toBeGreaterThan(0);
+    await userEvent.click(options[0]);
+    expect(onWishChange).toHaveBeenCalledWith(expect.stringMatching(/birthday/i));
+    expect(screen.queryByRole('dialog', { name: /popular messages/i })).not.toBeInTheDocument();
   });
 
-  it('disables Post and Retake while posting, and shows a posting error', () => {
+  it('shows the character counter and the limit error at 200 chars', () => {
+    renderPreview({ wish: 'a'.repeat(200) });
+    expect(screen.getByText('200/200')).toBeInTheDocument();
+    expect(screen.getByText(/maximum character limit exceeded/i)).toBeInTheDocument();
+  });
+
+  it('labels the secondary button by photo source', () => {
+    const { unmount } = render(
+      <Preview
+        composited={{ imageUrl: 'x' }}
+        wish=""
+        onWishChange={vi.fn()}
+        posting={false}
+        postError={null}
+        photoSource="upload"
+        onRetake={vi.fn()}
+        onPost={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /reupload/i })).toBeInTheDocument();
+    unmount();
+    render(
+      <Preview
+        composited={{ imageUrl: 'x' }}
+        wish=""
+        onWishChange={vi.fn()}
+        posting={false}
+        postError={null}
+        photoSource="capture"
+        onRetake={vi.fn()}
+        onPost={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /retake/i })).toBeInTheDocument();
+  });
+
+  it('disables Post and the secondary button while posting, and shows a posting error', () => {
     renderPreview({ posting: true, postError: "We couldn't post your card. Please try again." });
     expect(screen.getByRole('button', { name: /posting/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /retake/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /reupload/i })).toBeDisabled();
     expect(screen.getByText(/couldn't post your card/i)).toBeInTheDocument();
   });
 

@@ -1,0 +1,109 @@
+.inspire-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+}
+
+.inspire-sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.inspire-sheet__panel {
+  position: relative;
+  width: 100%;
+  max-height: 72vh;
+  background: #ffffff;
+  border-radius: 20px 20px 0 0;
+  padding: 20px 20px 28px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
+  overflow-y: auto;
+  animation: inspire-sheet-up 0.28s ease-out;
+}
+
+@keyframes inspire-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.inspire-sheet__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.inspire-sheet__header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.inspire-sheet__close {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+}
+
+.inspire-sheet__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.inspire-sheet__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 2px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #ececec;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inspire-sheet__text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #2a2a2a;
+  font-weight: 600;
+}
+
+.inspire-sheet__radio {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #b8b8b8;
+  position: relative;
+}
+
+.inspire-sheet__radio--on {
+  border-color: #4c3fbb;
+}
+
+.inspire-sheet__radio--on::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: #4c3fbb;
+}

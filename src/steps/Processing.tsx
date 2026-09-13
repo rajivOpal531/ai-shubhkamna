@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { compositePhoto, CompositeError } from '../services/composite';
-import { AppBackground } from '../components/AppBackground';
 import faceScanArt from '../assets/error-face-scan.png';
 import genericErrorArt from '../assets/error-generic.png';
 import hangTightArt from '../assets/hang-tight.png';
@@ -99,7 +98,6 @@ export function Processing({
   onHome,
 }: Props) {
   const [failure, setFailure] = useState<CompositeError | null>(null);
-  const [attempt, setAttempt] = useState(0);
   const [uploadDone, setUploadDone] = useState(false);
   const [handedOff, setHandedOff] = useState(false);
   const [result, setResult] = useState<CompositeResult | null>(null);
@@ -146,7 +144,7 @@ export function Processing({
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attempt, photo, template.id, template.image]);
+  }, [photo, template.id, template.image]);
 
   useEffect(() => {
     if (failure) {
@@ -166,28 +164,20 @@ export function Processing({
     const faceVariant = failure.code === 'no_face' ? 'none' : failure.code === 'multiple_faces' ? 'many' : null;
     return (
       <div className="processing processing--error" role="alert">
-        <AppBackground />
-        <img className="processing__art" src={faceVariant ? faceScanArt : genericErrorArt} alt="" />
-        <h2 className="processing__error-title">{view.title}</h2>
-        <p className="processing__error-body">{view.body}</p>
-        <div className="processing__error-actions">
-          {failure.retryable && (
-            <button
-              type="button"
-              className="processing__btn processing__btn--primary"
-              onClick={() => setAttempt((v) => v + 1)}
-            >
-              Try again
+        <div className="processing__sheet">
+          <img className="processing__sheet-art" src={faceVariant ? faceScanArt : genericErrorArt} alt="" />
+          <h2 className="processing__sheet-title">{view.title}</h2>
+          {!faceVariant && view.body && <p className="processing__sheet-body">{view.body}</p>}
+          <div className="processing__sheet-actions">
+            {onHome && (
+              <button type="button" className="processing__sheet-home" onClick={onHome}>
+                Home
+              </button>
+            )}
+            <button type="button" className="processing__sheet-retake" onClick={onError}>
+              {retakeLabel}
             </button>
-          )}
-          <button type="button" className="processing__btn processing__btn--primary" onClick={onError}>
-            {retakeLabel}
-          </button>
-          {onHome && (
-            <button type="button" className="processing__btn processing__btn--ghost" onClick={onHome}>
-              Home
-            </button>
-          )}
+          </div>
         </div>
       </div>
     );

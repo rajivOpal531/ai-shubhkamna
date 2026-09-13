@@ -38,15 +38,14 @@ describe('Processing', () => {
     expect(compositePhotoMock).toHaveBeenCalledWith(expect.objectContaining({ jwt: 'test-jwt', templateId: 'card-1' }));
   });
 
-  it('shows a retry/retake option when compositing fails, and retry calls compositePhoto again', async () => {
+  it('shows the generic error and lets the user reupload after a failure', async () => {
     compositePhotoMock.mockRejectedValue(new CompositeError('boom', 500, null));
-    render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);
+    const onError = vi.fn();
+    render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={onError} />);
 
-    const retryButton = await screen.findByRole('button', { name: /try again/i });
-    expect(compositePhotoMock).toHaveBeenCalledTimes(1);
-
-    await userEvent.click(retryButton);
-    await waitFor(() => expect(compositePhotoMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('heading', { name: /something went wrong/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /reupload/i }));
+    expect(onError).toHaveBeenCalled();
   });
 
   it('calls onError when Reupload is clicked after a failure', async () => {
@@ -87,15 +86,15 @@ describe('Processing', () => {
     expect(
       await screen.findByText(/service is busy right now/i),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reupload/i })).toBeInTheDocument();
   });
 
-  it('shows a reachability message with Retry when the request never got a response', async () => {
+  it('shows a reachability message with Reupload when the request never got a response', async () => {
     compositePhotoMock.mockRejectedValue(new CompositeError('timed out', null, null));
     render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);
 
     expect(await screen.findByText(/couldn't reach the card service/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reupload/i })).toBeInTheDocument();
   });
 
   it('shows the config message with no Retry button for a config failure', async () => {

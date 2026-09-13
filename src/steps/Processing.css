@@ -142,33 +142,90 @@
   margin-top: 2px;
 }
 
-/* ---- Error screen (light, over AppBackground) ---- */
+/* ---- Error: bottom-sheet popup over a dimmed watermark backdrop ---- */
 .processing--error {
-  gap: 12px;
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)),
+    url('../assets/app-bg.png') center top / cover no-repeat,
+    #191919;
 }
 
-.processing__art {
-  width: 96px;
-  height: 96px;
+.processing__sheet {
+  width: 100%;
+  background: var(--c-white);
+  border-radius: 24px 24px 0 0;
+  padding: 28px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
+  animation: sheet-up 0.28s ease-out;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.processing__sheet-art {
+  width: 64px;
+  height: 64px;
   object-fit: contain;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
-.processing__error-title {
-  font-size: 20px;
+.processing__sheet-title {
+  font-size: 18px;
   font-weight: 700;
-  line-height: 28px;
+  line-height: 24px;
   color: var(--c-text);
-  margin: 0 0 8px;
+  margin: 0;
 }
 
-.processing__error-body {
+.processing__sheet-body {
   font-size: 14px;
   font-weight: 700;
   line-height: 20px;
   color: var(--c-text);
   max-width: 300px;
-  margin: 0 0 22px;
+  margin: 8px 0 0;
+}
+
+.processing__sheet-actions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  margin-top: 22px;
+}
+
+.processing__sheet-actions button {
+  flex: 1;
+  padding: 14px;
+  border-radius: 28px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.processing__sheet-home {
+  background: var(--c-white);
+  border: 1.5px solid var(--c-main);
+  color: var(--c-main);
+}
+
+.processing__sheet-retake {
+  background: var(--c-main);
+  border: 1.5px solid var(--c-main);
+  color: var(--c-white);
 }
 
 .processing__error-actions {

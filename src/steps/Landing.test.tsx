@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Landing } from './Landing';
@@ -23,11 +23,11 @@ describe('Landing', () => {
   it('edits the name through the pencil popup', async () => {
     const props = renderLanding({ name: 'Old Name' });
     await userEvent.click(screen.getByRole('button', { name: /edit name/i }));
-    expect(screen.getByRole('dialog', { name: /edit display name/i })).toBeInTheDocument();
-    const input = screen.getByPlaceholderText(/enter your name/i);
+    const dialog = screen.getByRole('dialog', { name: /edit display name/i });
+    const input = within(dialog).getByRole('textbox');
     await userEvent.clear(input);
     await userEvent.type(input, 'New Name');
-    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+    await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
     expect(props.onNameChange).toHaveBeenCalledWith('New Name');
   });
 

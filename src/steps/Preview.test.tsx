@@ -12,6 +12,7 @@ function renderPreview(overrides: Partial<React.ComponentProps<typeof Preview>> 
     postError: null,
     photoSource: 'upload' as const,
     onRetake: vi.fn(),
+    onBack: vi.fn(),
     onPost: vi.fn(),
     ...overrides,
   };
@@ -69,6 +70,7 @@ describe('Preview', () => {
         posting={false}
         postError={null}
         photoSource="upload"
+        onBack={vi.fn()}
         onRetake={vi.fn()}
         onPost={vi.fn()}
       />,
@@ -83,6 +85,7 @@ describe('Preview', () => {
         posting={false}
         postError={null}
         photoSource="capture"
+        onBack={vi.fn()}
         onRetake={vi.fn()}
         onPost={vi.fn()}
       />,

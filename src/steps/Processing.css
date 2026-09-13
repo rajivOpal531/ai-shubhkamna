@@ -65,7 +65,7 @@
 }
 
 .processing--loading .processing__scrim {
-  background: rgba(25, 25, 25, 0.7);
+  background: rgba(25, 25, 25, 0.85);
 }
 
 .processing--error .processing__scrim {

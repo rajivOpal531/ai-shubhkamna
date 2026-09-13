@@ -102,7 +102,7 @@ function Flow() {
         />
       )}
       {step === 'tips' && (
-        <Tips onProceed={() => cameraInputRef.current?.click()} onBack={() => setShowExitConfirm(true)} />
+        <Tips onProceed={() => cameraInputRef.current?.click()} onBack={() => setStep('landing')} />
       )}
       {/* Native camera: `capture` opens the device camera directly on iOS and Android. */}
       <input
@@ -163,6 +163,7 @@ function Flow() {
           photoSource={photoSource}
           showProcessedToast={processedToast}
           onDismissToast={() => setProcessedToast(false)}
+          onBack={() => setStep('landing')}
           onRetake={repickPhoto}
           onPost={handlePost}
         />

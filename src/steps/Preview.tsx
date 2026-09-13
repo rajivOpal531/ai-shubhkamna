@@ -14,6 +14,7 @@ type Props = {
   posting: boolean;
   postError: string | null;
   photoSource: 'upload' | 'capture';
+  onBack: () => void;
   showProcessedToast?: boolean;
   onDismissToast?: () => void;
   onRetake: () => void;
@@ -27,6 +28,7 @@ export function Preview({
   posting,
   postError,
   photoSource,
+  onBack,
   showProcessedToast = false,
   onDismissToast,
   onRetake,
@@ -60,7 +62,7 @@ export function Preview({
         />
       )}
       <header className="preview__header">
-        <button type="button" className="preview__back" aria-label="Back" onClick={onRetake} disabled={posting}>
+        <button type="button" className="preview__back" aria-label="Back" onClick={onBack} disabled={posting}>
           ←
         </button>
         <h1>AI Shubhkamna</h1>

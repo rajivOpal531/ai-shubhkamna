@@ -21,4 +21,11 @@ if env_file.is_file():
             os.environ.setdefault(key.strip(), value.strip())
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:create_app", factory=True, host="127.0.0.1", port=int(os.environ.get("PORT", "8000")))
+    # host="localhost" makes asyncio bind every address the name resolves to (::1 and 127.0.0.1),
+    # so browsers that pick IPv6 for localhost reach the API just like IPv4 clients do.
+    uvicorn.run(
+        "app.main:create_app",
+        factory=True,
+        host="localhost",
+        port=int(os.environ.get("PORT", "8000")),
+    )

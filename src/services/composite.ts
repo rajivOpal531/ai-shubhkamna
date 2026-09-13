@@ -119,7 +119,7 @@ async function realCompositePhoto({
           response.headers.get('X-Request-Id'),
         );
       }
-      return { imageUrl: data.imageUrl };
+      return { imageUrl: data.imageUrl, warning: response.headers.get('X-Poster-Warning') };
     }
 
     const blob = await response.blob();
@@ -130,7 +130,7 @@ async function realCompositePhoto({
         response.headers.get('X-Request-Id'),
       );
     }
-    return { imageBlob: blob };
+    return { imageBlob: blob, warning: response.headers.get('X-Poster-Warning') };
   } catch (err) {
     if (err instanceof CompositeError) throw err;
     if (response) {

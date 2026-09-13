@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { compositePhoto, CompositeError } from '../services/composite';
-import gearsArt from '../assets/processing-gears.png';
 import hangTightArt from '../assets/hang-tight.png';
 import faceScanArt from '../assets/error-face-scan.png';
 import genericErrorArt from '../assets/error-generic.png';
@@ -19,9 +18,11 @@ type Props = {
   onRestart?: () => void;
 };
 
-// The "Processing" screen is shown while compositing. If it runs longer than this, we switch to
-// the "Hang tight" screen (with Go Back / Restart) so a slow request never looks stuck.
+// The steps screen shows while compositing. If it runs longer than this, we switch to the
+// "Hang tight" screen (with Go Back / Restart). Once the image is ready we hold the "Processed"
+// tick briefly so the user sees it, then advance to the preview.
 const SLOW_AFTER_MS = 30_000;
+const PROCESSED_HOLD_MS = 800;
 
 type ErrorView = { title: string; body: string };
 
@@ -68,6 +69,35 @@ function errorView(failure: CompositeError): ErrorView {
     default:
       return { title: 'Something went wrong', body: 'Something went wrong while creating your card.' };
   }
+}
+
+// The selected template + a message-field mock, shown (dimmed by the scrim) behind every dark screen.
+function Backdrop({ template }: { template: Template }) {
+  return (
+    <div className="processing__backdrop" aria-hidden="true">
+      <div className="processing__backdrop-head">AI Shubhkamna</div>
+      <img className="processing__backdrop-card" src={template.image} alt="" />
+      <h3 className="processing__backdrop-title">Wishes for PM Modi</h3>
+      <div className="processing__backdrop-field" />
+    </div>
+  );
+}
+
+const CheckIcon = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16">
+    <path d="M20 6L9 17l-5-5" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+function Step({ label, done }: { label: string; done: boolean }) {
+  return (
+    <div className={`processing__step processing__step--${done ? 'done' : 'active'}`}>
+      <span className="processing__step-icon" aria-hidden="true">
+        {done ? <CheckIcon /> : <span className="processing__spinner" />}
+      </span>
+      <span className="processing__step-label">{label}</span>
+    </div>
+  );
 }
 
 const BackIcon = () => (
@@ -142,10 +172,11 @@ export function Processing({
     }
   }, [failure]);
 
-  // Advance to the preview as soon as the composited image is ready.
+  // Once ready, hold the "Processed" tick briefly, then advance to the preview.
   useEffect(() => {
     if (result) {
-      latest.current.onComposited(result);
+      const timer = setTimeout(() => latest.current.onComposited(result), PROCESSED_HOLD_MS);
+      return () => clearTimeout(timer);
     }
   }, [result]);
 
@@ -154,6 +185,8 @@ export function Processing({
     const faceVariant = failure.code === 'no_face' ? 'none' : failure.code === 'multiple_faces' ? 'many' : null;
     return (
       <div className="processing processing--error" role="alert">
+        <Backdrop template={template} />
+        <div className="processing__scrim" />
         <div className="processing__sheet">
           <img className="processing__sheet-art" src={faceVariant ? faceScanArt : genericErrorArt} alt="" />
           <h2 className="processing__sheet-title">{view.title}</h2>
@@ -174,36 +207,38 @@ export function Processing({
   }
 
   return (
-    <div className="processing processing--loading" aria-live="polite">
-      {slow ? (
-        <div className="processing__finish">
-          <img className="processing__finish-art" src={hangTightArt} alt="" aria-hidden="true" />
-          <h2 className="processing__finish-title">Hang tight!</h2>
-          <p className="processing__finish-text">Our AI is working its magic to bring you something special.</p>
-          <p className="processing__finish-text processing__finish-text--muted">Check back in a little while!</p>
-          <div className="processing__ht-actions">
-            <button type="button" className="processing__ht-btn processing__ht-btn--back" onClick={onHome ?? onError}>
-              <BackIcon />
-              Go Back
-            </button>
-            <button
-              type="button"
-              className="processing__ht-btn processing__ht-btn--restart"
-              onClick={onRestart ?? onError}
-            >
-              <RestartIcon />
-              Restart
-            </button>
+    <div className="processing processing--loading">
+      <Backdrop template={template} />
+      <div className="processing__scrim" />
+      <div className="processing__center" aria-live="polite">
+        {slow ? (
+          <div className="processing__finish">
+            <img className="processing__finish-art" src={hangTightArt} alt="" aria-hidden="true" />
+            <h2 className="processing__finish-title">Hang tight!</h2>
+            <p className="processing__finish-text">Our AI is working its magic to bring you something special.</p>
+            <p className="processing__finish-text processing__finish-text--muted">Check back in a little while!</p>
+            <div className="processing__ht-actions">
+              <button type="button" className="processing__ht-btn processing__ht-btn--back" onClick={onHome ?? onError}>
+                <BackIcon />
+                Go Back
+              </button>
+              <button
+                type="button"
+                className="processing__ht-btn processing__ht-btn--restart"
+                onClick={onRestart ?? onError}
+              >
+                <RestartIcon />
+                Restart
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="processing__finish">
-          <img className="processing__gears" src={gearsArt} alt="" aria-hidden="true" />
-          <h2 className="processing__proc-title">Processing</h2>
-          <p className="processing__finish-text">Creating your perfect photo with PM Modi</p>
-          <p className="processing__finish-text processing__finish-text--muted">It is worth the wait!</p>
-        </div>
-      )}
+        ) : (
+          <div className="processing__steps">
+            <Step label="Uploaded" done />
+            <Step label={result ? 'Processed' : 'Processing'} done={result !== null} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

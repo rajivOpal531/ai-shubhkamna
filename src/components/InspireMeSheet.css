@@ -97,7 +97,7 @@
 }
 
 .inspire-sheet__radio--on {
-  border-color: #4c3fbb;
+  border-color: #22c55e;
 }
 
 .inspire-sheet__radio--on::after {
@@ -105,5 +105,5 @@
   position: absolute;
   inset: 3px;
   border-radius: 50%;
-  background: #4c3fbb;
+  background: #22c55e;
 }

@@ -15,6 +15,7 @@ export type Template = {
 export type CompositeResult = {
   imageUrl?: string;
   imageBlob?: Blob;
+  warning?: string | null;
 };
 
 export type CreatePostResult = {

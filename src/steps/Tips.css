@@ -13,7 +13,9 @@
   align-items: center;
   gap: 12px;
   padding: 14px 0;
-  border-bottom: 1px solid #ece4d8;
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, rgba(217, 107, 56, 0), rgba(217, 107, 56, 0.8), rgba(217, 107, 56, 0)) 1;
+  box-shadow: 0 5px 11px rgba(217, 107, 56, 0.16);
 }
 
 .tips__header button {

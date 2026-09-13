@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { JwtProvider, useJwt } from './context/JwtContext';
 import { MissingJwt } from './components/MissingJwt';
 import { ExitConfirm } from './components/ExitConfirm';
+import { WarningSheet } from './components/WarningSheet';
 import { Landing } from './steps/Landing';
 import { Tips } from './steps/Tips';
 import { Processing } from './steps/Processing';
@@ -36,6 +37,7 @@ function Flow() {
   const [postError, setPostError] = useState<string | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [processedToast, setProcessedToast] = useState(false);
+  const [overlapWarning, setOverlapWarning] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -143,6 +145,7 @@ function Flow() {
           onComposited={(result) => {
             setComposited(result);
             setProcessedToast(true);
+            setOverlapWarning(result.warning === 'text-overlap');
             setStep('preview');
           }}
           onError={repickPhoto}
@@ -160,8 +163,18 @@ function Flow() {
           photoSource={photoSource}
           showProcessedToast={processedToast}
           onDismissToast={() => setProcessedToast(false)}
-          onRetake={() => setStep('landing')}
+          onRetake={repickPhoto}
           onPost={handlePost}
+        />
+      )}
+      {step === 'preview' && overlapWarning && (
+        <WarningSheet
+          retakeLabel={photoSource === 'capture' ? 'Retake' : 'Reupload'}
+          onIgnore={() => setOverlapWarning(false)}
+          onRetake={() => {
+            setOverlapWarning(false);
+            repickPhoto();
+          }}
         />
       )}
       {showExitConfirm && (

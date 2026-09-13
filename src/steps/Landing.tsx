@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { TemplateCarousel } from '../components/TemplateCarousel';
 import { AppBackground } from '../components/AppBackground';
 import { NameEditDialog } from '../components/NameEditDialog';
+import editIcon from '../assets/edit-icon.png';
 import { templates } from '../data/templates';
 import './Landing.css';
 
@@ -62,16 +63,7 @@ export function Landing({
           aria-label="Edit name"
           onClick={() => setEditingName(true)}
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path
-              d="M4 20h4l10-10a2 2 0 0 0-3-3L5 17v3z M13.5 6.5l3 3"
-              fill="none"
-              stroke="#4c3fbb"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <img src={editIcon} alt="" width="18" height="18" />
         </button>
       </div>
 

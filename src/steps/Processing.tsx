@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { compositePhoto, CompositeError } from '../services/composite';
+import gearsArt from '../assets/processing-gears.png';
+import hangTightArt from '../assets/hang-tight.png';
 import faceScanArt from '../assets/error-face-scan.png';
 import genericErrorArt from '../assets/error-generic.png';
-import hangTightArt from '../assets/hang-tight.png';
 import type { CompositeResult, Profile, Template } from '../types';
 import './Processing.css';
 
@@ -15,13 +16,12 @@ type Props = {
   onComposited: (result: CompositeResult) => void;
   onError: () => void;
   onHome?: () => void;
+  onRestart?: () => void;
 };
 
-// Staged timing: the "Photo uploaded" tick appears quickly, the "Processing" loader shows for a
-// beat, then we hand off to the "Hang tight" waiting screen, which stays until the real composited
-// image is ready (however long the AI takes).
-const UPLOAD_MS = 700;
-const HANDOFF_MS = 2700;
+// The "Processing" screen is shown while compositing. If it runs longer than this, we switch to
+// the "Hang tight" screen (with Go Back / Restart) so a slow request never looks stuck.
+const SLOW_AFTER_MS = 60_000;
 
 type ErrorView = { title: string; body: string };
 
@@ -70,22 +70,18 @@ function errorView(failure: CompositeError): ErrorView {
   }
 }
 
-function Step({ label, state }: { label: string; state: 'pending' | 'active' | 'done' }) {
-  return (
-    <div className={`processing__step processing__step--${state}`}>
-      <span className="processing__step-icon" aria-hidden="true">
-        {state === 'done' ? (
-          <svg viewBox="0 0 24 24" width="16" height="16">
-            <path d="M20 6L9 17l-5-5" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ) : state === 'active' ? (
-          <span className="processing__spinner" />
-        ) : null}
-      </span>
-      <span className="processing__step-label">{label}</span>
-    </div>
-  );
-}
+const BackIcon = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+    <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const RestartIcon = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+    <path d="M4 12a8 8 0 1 1 2.3 5.6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    <path d="M4 20v-4h4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 export function Processing({
   jwt,
@@ -96,30 +92,25 @@ export function Processing({
   onComposited,
   onError,
   onHome,
+  onRestart,
 }: Props) {
   const [failure, setFailure] = useState<CompositeError | null>(null);
-  const [uploadDone, setUploadDone] = useState(false);
-  const [handedOff, setHandedOff] = useState(false);
   const [result, setResult] = useState<CompositeResult | null>(null);
+  const [slow, setSlow] = useState(false);
   const latest = useRef({ profile, onComposited, jwt });
   latest.current = { profile, onComposited, jwt };
 
   const retakeLabel = photoSource === 'capture' ? 'Retake' : 'Reupload';
 
-  // Compositing request; on success we hold the result and let the staged animation finish first.
   useEffect(() => {
     let cancelled = false;
     setFailure(null);
-    setUploadDone(false);
-    setHandedOff(false);
     setResult(null);
+    setSlow(false);
     const controller = new AbortController();
-    const uploadTimer = setTimeout(() => {
-      if (!cancelled) setUploadDone(true);
-    }, UPLOAD_MS);
-    const handoffTimer = setTimeout(() => {
-      if (!cancelled) setHandedOff(true);
-    }, HANDOFF_MS);
+    const slowTimer = setTimeout(() => {
+      if (!cancelled) setSlow(true);
+    }, SLOW_AFTER_MS);
 
     compositePhoto({
       photo,
@@ -139,8 +130,7 @@ export function Processing({
 
     return () => {
       cancelled = true;
-      clearTimeout(uploadTimer);
-      clearTimeout(handoffTimer);
+      clearTimeout(slowTimer);
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,12 +142,12 @@ export function Processing({
     }
   }, [failure]);
 
-  // Advance to the preview only once we are on the "Hang tight" screen AND the image is ready.
+  // Advance to the preview as soon as the composited image is ready.
   useEffect(() => {
-    if (handedOff && result) {
+    if (result) {
       latest.current.onComposited(result);
     }
-  }, [handedOff, result]);
+  }, [result]);
 
   if (failure) {
     const view = errorView(failure);
@@ -183,30 +173,35 @@ export function Processing({
     );
   }
 
-  const processDone = result !== null;
-
   return (
-    <div className="processing processing--loading">
-      {handedOff ? (
+    <div className="processing processing--loading" aria-live="polite">
+      {slow ? (
         <div className="processing__finish">
           <img className="processing__finish-art" src={hangTightArt} alt="" aria-hidden="true" />
           <h2 className="processing__finish-title">Hang tight!</h2>
           <p className="processing__finish-text">Our AI is working its magic to bring you something special.</p>
           <p className="processing__finish-text processing__finish-text--muted">Check back in a little while!</p>
-          <div className="processing__error-actions">
-            <button type="button" className="processing__btn processing__btn--ondark" onClick={onHome ?? onError}>
+          <div className="processing__ht-actions">
+            <button type="button" className="processing__ht-btn processing__ht-btn--back" onClick={onHome ?? onError}>
+              <BackIcon />
               Go Back
             </button>
-            <button type="button" className="processing__btn processing__btn--ondark" onClick={onError}>
+            <button
+              type="button"
+              className="processing__ht-btn processing__ht-btn--restart"
+              onClick={onRestart ?? onError}
+            >
+              <RestartIcon />
               Restart
             </button>
           </div>
         </div>
       ) : (
-        <div className="processing__steps" aria-live="polite">
-          <h2 className="processing__heading">Creating your card</h2>
-          <Step label={uploadDone ? 'Uploaded' : 'Uploading'} state={uploadDone ? 'done' : 'active'} />
-          <Step label={processDone ? 'Processed' : 'Processing'} state={processDone ? 'done' : uploadDone ? 'active' : 'pending'} />
+        <div className="processing__finish">
+          <img className="processing__gears" src={gearsArt} alt="" aria-hidden="true" />
+          <h2 className="processing__proc-title">Processing</h2>
+          <p className="processing__finish-text">Creating your perfect photo with PM Modi</p>
+          <p className="processing__finish-text processing__finish-text--muted">It is worth the wait!</p>
         </div>
       )}
     </div>

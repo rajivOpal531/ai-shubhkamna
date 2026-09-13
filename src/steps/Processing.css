@@ -8,90 +8,15 @@
   text-align: center;
   position: relative;
   z-index: 1;
-  background: transparent; /* error state sits over AppBackground */
-}
-
-/* Dark loading overlay: Figma Rectangle 3464339 = #191919 at 85% over the watermark */
-.processing--loading {
-  background:
-    linear-gradient(rgba(25, 25, 25, 0.85), rgba(25, 25, 25, 0.85)),
-    url('../assets/app-bg.png') center top / cover no-repeat,
-    #191919;
-}
-
-.processing__steps {
-  width: 100%;
-  max-width: 320px;
-}
-
-.processing__heading {
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 24px;
-  color: var(--c-white);
-  margin: 0 0 24px;
-}
-
-.processing__step {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.07);
-  margin-bottom: 12px;
-  text-align: left;
-  transition: opacity 0.3s ease;
-}
-
-.processing__step--pending {
-  opacity: 0.45;
-}
-
-.processing__step-icon {
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.processing__step--done .processing__step-icon {
-  background: #21a555;
-}
-
-.processing__step--active .processing__step-icon {
   background: transparent;
 }
 
-/* Label/Large on the dark screen */
-.processing__step-label {
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 24px;
-  color: var(--c-white);
-}
-
-.processing__step--active .processing__step-label {
-  opacity: 0.6; /* Figma: active "Processing" at 60% */
-}
-
-.processing__spinner {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.25);
-  border-top-color: #ffffff;
-  animation: processing-spin 0.8s linear infinite;
-}
-
-@keyframes processing-spin {
-  to {
-    transform: rotate(360deg);
-  }
+/* Dark loading screen: #191919 over the watermark, kept translucent so the art shows through. */
+.processing--loading {
+  background:
+    linear-gradient(rgba(25, 25, 25, 0.7), rgba(25, 25, 25, 0.7)),
+    url('../assets/app-bg.png') center top / cover no-repeat,
+    #191919;
 }
 
 .processing__finish {
@@ -110,6 +35,22 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+.processing__gears {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  margin-bottom: 16px;
+}
+
+/* Label/Large on the dark screen */
+.processing__proc-title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
+  color: var(--c-white);
+  margin: 0 0 8px;
 }
 
 .processing__finish-art {
@@ -140,6 +81,40 @@
 .processing__finish-text--muted {
   color: var(--c-stroke);
   margin-top: 2px;
+}
+
+/* Hang-tight buttons: Go Back (light) + Restart (filled), with icons */
+.processing__ht-actions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 26px;
+}
+
+.processing__ht-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 13px 16px;
+  border-radius: 28px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  cursor: pointer;
+  border: none;
+}
+
+.processing__ht-btn--back {
+  background: var(--c-white);
+  color: var(--c-main);
+}
+
+.processing__ht-btn--restart {
+  background: var(--c-main);
+  color: var(--c-white);
 }
 
 /* ---- Error: bottom-sheet popup over a dimmed watermark backdrop ---- */
@@ -226,42 +201,4 @@
   background: var(--c-main);
   border: 1.5px solid var(--c-main);
   color: var(--c-white);
-}
-
-.processing__error-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  max-width: 300px;
-  margin-top: 20px;
-}
-
-/* Button/Primary: 14 / 700 / 20 (colour depends on the button) */
-.processing__btn {
-  width: 100%;
-  padding: 13px 20px;
-  border-radius: 26px;
-  border: none;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 20px;
-  cursor: pointer;
-}
-
-.processing__btn--primary {
-  background: var(--c-main);
-  color: var(--c-white);
-}
-
-.processing__btn--ghost {
-  background: transparent;
-  color: var(--c-main);
-  border: 1.5px solid #cfc7f0;
-}
-
-.processing__btn--ondark {
-  background: transparent;
-  color: var(--c-white);
-  border: 1.5px solid rgba(255, 255, 255, 0.35);
 }

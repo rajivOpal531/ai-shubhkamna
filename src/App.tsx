@@ -37,6 +37,13 @@ function Flow() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [processedToast, setProcessedToast] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+
+  // On a failed composite, Retake/Reupload should reopen the same source the photo came from.
+  function repickPhoto() {
+    if (photoSource === 'capture') cameraInputRef.current?.click();
+    else galleryInputRef.current?.click();
+  }
 
   useEffect(() => {
     getProfile(jwt).then((fetched) => {
@@ -111,6 +118,21 @@ function Flow() {
           event.target.value = '';
         }}
       />
+      {/* Gallery picker, so Reupload after an error can reopen it without going back to Landing. */}
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        data-testid="gallery-input"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) {
+            handleFileSelected(file);
+          }
+          event.target.value = '';
+        }}
+      />
       {step === 'processing' && photo && (
         <Processing
           jwt={jwt}
@@ -123,7 +145,8 @@ function Flow() {
             setProcessedToast(true);
             setStep('preview');
           }}
-          onError={() => setStep('landing')}
+          onError={repickPhoto}
+          onRestart={() => setStep('landing')}
           onHome={() => redirectWithJwt(config.homeUrl, jwt)}
         />
       )}

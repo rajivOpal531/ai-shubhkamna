@@ -4,24 +4,12 @@
   z-index: -1;
   pointer-events: none;
   overflow: hidden;
-  /* Beige base with a faint tricolour wash top-to-bottom. */
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 153, 51, 0.10) 0%,
-      rgba(251, 245, 238, 0) 26%,
-      rgba(251, 245, 238, 0) 74%,
-      rgba(19, 136, 8, 0.09) 100%
-    ),
-    #fbf5ee;
-  /* If a Figma raster is provided, set it here:
-     background-image: var(--app-bg-image); background-size: cover; */
-}
-
-.app-bg__mark {
-  position: absolute;
-  top: 8%;
-  left: 50%;
-  transform: translateX(-50%);
-  opacity: 0.06;
+  /* Figma "development India" watermark, with the beige base as the fallback/letterbox colour.
+     The art is anchored to the top and covers the viewport; it fades to near-white down the
+     middle so page content stays readable. */
+  background-color: #fbf5ee;
+  background-image: url('../assets/app-bg.png');
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: cover;
 }

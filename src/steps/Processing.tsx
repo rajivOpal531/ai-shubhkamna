@@ -21,7 +21,7 @@ type Props = {
 
 // The "Processing" screen is shown while compositing. If it runs longer than this, we switch to
 // the "Hang tight" screen (with Go Back / Restart) so a slow request never looks stuck.
-const SLOW_AFTER_MS = 60_000;
+const SLOW_AFTER_MS = 30_000;
 
 type ErrorView = { title: string; body: string };
 

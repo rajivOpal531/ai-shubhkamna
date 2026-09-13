@@ -217,10 +217,14 @@ def compose(
     cutout = crop_to_subject(remover(photo))
     with Image.open(placement.template_path) as template:
         card = template.convert("RGB")
-    draw_text_block(card, placement, fields, font_path)  # text first so the cutout can overlap it like the design
+    # Paste the person first, then draw the caption on top. draw_text_block fills the text box
+    # with the sampled background before drawing, so any part of the cutout that reaches into the
+    # caption area is covered by that fill: the photo never hides the text, and the text never sits
+    # over the person (the person is cleared from the caption box). They stay out of each other's way.
     fitted = fit_bottom_center(cutout.size, placement.photo_box)
     cutout = cutout.resize((fitted.w, fitted.h), Image.LANCZOS)
     card.paste(cutout, (fitted.x, fitted.y), cutout)
+    draw_text_block(card, placement, fields, font_path)
     buffer = io.BytesIO()
     card.save(buffer, "JPEG", quality=90, subsampling=0, optimize=True)
     return buffer.getvalue()

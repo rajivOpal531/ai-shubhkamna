@@ -18,7 +18,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Bake the model weights into the image so a cold container never downloads at request time.
-RUN python -c "from rembg import new_session; new_session('isnet-general-use')"
+# pooch downloads via a NamedTemporaryFile (mode 0600) and moves it into place, so the baked file is
+# root-only; open it up or the non-root runtime user hits PermissionError while hash-checking it.
+RUN python -c "from rembg import new_session; new_session('isnet-general-use')" \
+ && chmod -R a+rX /models
 
 # Fail the build if Pillow cannot see libraqm (text shaping for Indic scripts would silently break).
 RUN python -c "from PIL import features; assert features.check('raqm'), 'libraqm not available to Pillow'"
@@ -27,7 +30,7 @@ COPY app ./app
 COPY templates ./templates
 
 # Drop root for everything the app does at runtime; /models and /srv were baked by root above and
-# are world-readable, which is all the app needs.
+# are made world-readable (see the chmod after the model bake), which is all the app needs.
 RUN useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin appuser
 ENV HOME=/tmp
 USER 10001

@@ -8,7 +8,7 @@ from PIL import Image, ImageChops, ImageDraw
 from app.pipeline import (
     FONT_PATH,
     MAX_SIDE,
-    MIN_FONT_SCALE,
+    MIN_FONT_PX,
     BadImageError,
     NoSubjectError,
     TextFields,
@@ -259,7 +259,7 @@ def test_fit_font_shrinks_but_not_below_floor():
     draw = ImageDraw.Draw(img)
 
     long_line_font = _fit_font(draw, ["A" * 200], FONT_PATH, 24, 160, 100)
-    assert round(24 * MIN_FONT_SCALE) <= long_line_font.size < 24
+    assert long_line_font.size == MIN_FONT_PX, "a very long line shrinks only to the absolute floor"
 
     short_line_font = _fit_font(draw, ["Ab"], FONT_PATH, 24, 160, 100)
     assert short_line_font.size == 24
@@ -276,14 +276,14 @@ def test_fit_font_respects_vertical_cap():
 
 def test_draw_text_block_shrinks_long_location_instead_of_truncating():
     """A location line that doesn't fit at the placement's font size, but does fit once
-    shrunk toward MIN_FONT_SCALE, should be shrunk rather than truncated with an ellipsis."""
-    img = Image.new("RGB", (300, 300), "white")
+    shrunk toward the absolute floor, should be shrunk rather than truncated with an ellipsis."""
+    img = Image.new("RGB", (1080, 1260), "white")
     draw = ImageDraw.Draw(img)
-    box = _synthetic_placement().text_box
+    box = load_placements()["card-2"].text_box
 
-    line = "Madhya Pradesh"
-    font = _fit_font(draw, [line], FONT_PATH, 24, box.w, box.h)
-    assert font.size < 24, "line should have required shrinking at the synthetic box width"
+    line = "Gautam Buddha Nagar,"
+    font = _fit_font(draw, [line], FONT_PATH, 36, box.w, box.h)
+    assert font.size < 36, "line should have required shrinking at this box width"
     assert _truncate(draw, line, font, box.w) == line, "shrunk text should fit without truncation"
 
 

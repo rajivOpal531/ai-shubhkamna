@@ -16,7 +16,10 @@ MAX_PIXELS = 24_000_000  # ~2x headroom over a 12 MP phone photo; PNG/WebP skip 
 ALPHA_THRESHOLD = 8
 FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Poppins-SemiBold.ttf"
 LINE_HEIGHT_FACTOR = 1.25
-MIN_FONT_SCALE = 0.6
+# The caption uses the largest size that fits the box, down to this absolute floor. Below this the
+# text is unreadable, so a very long location shrinks to the floor and then truncates rather than
+# going smaller; normal-length names/locations render at the placement's full size.
+MIN_FONT_PX = 20
 
 Font = ImageFont.FreeTypeFont
 
@@ -133,10 +136,11 @@ def _fit_font(
     the widest line and the block's height; the caller still truncates anything that overflows at the floor."""
     font = _load_font(font_path, size)
     widest = max((draw.textlength(line, font=font) for line in lines), default=0)
-    width_estimate = size if widest <= max_width or widest == 0 else int(size * max_width / widest)
+    # 0.94 safety factor: the width-vs-size relationship is only approximately linear, so a bare
+    # estimate can land a pixel or two too wide and force a truncation. Undershoot slightly instead.
+    width_estimate = size if widest <= max_width or widest == 0 else int(size * max_width * 0.94 / widest)
     cap = max(1, int(max_height / (max(1, len(lines)) * LINE_HEIGHT_FACTOR)))
-    floor = max(1, round(size * MIN_FONT_SCALE))
-    candidate = max(floor, min(size, cap, width_estimate))
+    candidate = max(MIN_FONT_PX, min(size, cap, width_estimate))
     if candidate == size:
         return font
     return _load_font(font_path, candidate)
@@ -205,6 +209,56 @@ def draw_text_block(card: Image.Image, placement: Placement, fields: TextFields,
         y += line_height
 
 
+TEXT_CLEAR_MARGIN = 16
+
+
+def clear_of_text(photo_box: Box, text_box: Box) -> Box:
+    """Shrink `photo_box` so it never overlaps `text_box`.
+
+    If the boxes overlap, the person is moved to the side of the caption with more room (usually the
+    opposite side of the text) and resized to fit that clear column. Guarantees the photo cannot cover
+    the caption text; masking in compose() catches any pixels that still spill in.
+    """
+    overlaps = (
+        photo_box.x < text_box.right
+        and photo_box.right > text_box.x
+        and photo_box.y < text_box.bottom
+        and photo_box.bottom > text_box.y
+    )
+    if not overlaps:
+        return photo_box
+    left_room = text_box.x - photo_box.x
+    right_room = photo_box.right - text_box.right
+    if right_room >= left_room:
+        new_x = text_box.right + TEXT_CLEAR_MARGIN
+        new_w = photo_box.right - new_x
+    else:
+        new_x = photo_box.x
+        new_w = (text_box.x - TEXT_CLEAR_MARGIN) - photo_box.x
+    if new_w < 60:  # no usable room on either side; keep the box and rely on masking
+        return photo_box
+    return Box(new_x, photo_box.y, new_w, photo_box.h)
+
+
+def _mask_out_text_box(cutout: Image.Image, x: int, y: int, text_box: Box) -> None:
+    """Zero the alpha of any cutout pixels that fall inside `text_box` (with a margin), so the person
+    can never be drawn over the caption even if the fitted box still slightly intersects it."""
+    left = max(text_box.x - TEXT_CLEAR_MARGIN - x, 0)
+    top = max(text_box.y - TEXT_CLEAR_MARGIN - y, 0)
+    right = min(text_box.right + TEXT_CLEAR_MARGIN - x, cutout.width)
+    bottom = min(text_box.bottom + TEXT_CLEAR_MARGIN - y, cutout.height)
+    if right <= left or bottom <= top:
+        return
+    clear = Image.new("L", (right - left, bottom - top), 0)
+    cutout.putalpha(_paste_alpha(cutout.getchannel("A"), clear, left, top))
+
+
+def _paste_alpha(alpha: Image.Image, clear: Image.Image, left: int, top: int) -> Image.Image:
+    alpha = alpha.copy()
+    alpha.paste(clear, (left, top))
+    return alpha
+
+
 def compose(
     photo_bytes: bytes,
     placement: Placement,
@@ -217,12 +271,12 @@ def compose(
     cutout = crop_to_subject(remover(photo))
     with Image.open(placement.template_path) as template:
         card = template.convert("RGB")
-    # Paste the person first, then draw the caption on top. draw_text_block fills the text box
-    # with the sampled background before drawing, so any part of the cutout that reaches into the
-    # caption area is covered by that fill: the photo never hides the text, and the text never sits
-    # over the person (the person is cleared from the caption box). They stay out of each other's way.
-    fitted = fit_bottom_center(cutout.size, placement.photo_box)
+    # Fit the person into the part of the photo box that is clear of the caption, then mask any pixels
+    # that still reach into the caption. The photo never covers the text; the caption is drawn last.
+    clear_box = clear_of_text(placement.photo_box, placement.text_box)
+    fitted = fit_bottom_center(cutout.size, clear_box)
     cutout = cutout.resize((fitted.w, fitted.h), Image.LANCZOS)
+    _mask_out_text_box(cutout, fitted.x, fitted.y, placement.text_box)
     card.paste(cutout, (fitted.x, fitted.y), cutout)
     draw_text_block(card, placement, fields, font_path)
     buffer = io.BytesIO()

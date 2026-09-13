@@ -87,6 +87,14 @@ describe('Processing', () => {
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
   });
 
+  it('shows a reachability message with Retry when the request never got a response', async () => {
+    compositePhotoMock.mockRejectedValue(new CompositeError('timed out', null, null));
+    render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);
+
+    expect(await screen.findByText(/couldn't reach the card service/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
   it('shows the config message with no Retry button for a config failure', async () => {
     compositePhotoMock.mockRejectedValue(new CompositeError('cfg', null, null, 'config'));
     render(<Processing jwt="test-jwt" photo={PHOTO} template={TEMPLATE} profile={PROFILE} onComposited={vi.fn()} onError={vi.fn()} />);

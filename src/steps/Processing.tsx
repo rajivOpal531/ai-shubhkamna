@@ -16,6 +16,9 @@ function errorMessage(failure: CompositeError): string {
   if (failure.kind === 'config') {
     return "This feature isn't set up correctly yet. Please try again later.";
   }
+  if (failure.kind === 'network') {
+    return "We couldn't reach the card service. Please check your connection and try again.";
+  }
   switch (failure.status) {
     case 422:
       return "We couldn't find a person in that photo. Please try a clearer photo with just you in the frame.";

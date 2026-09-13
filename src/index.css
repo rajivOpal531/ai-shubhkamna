@@ -1,6 +1,12 @@
+:root {
+  /* App UI typeface. Poppins matches the Figma design and the composited card caption.
+     Swap the first family here if the design's font differs. */
+  --font-sans: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 

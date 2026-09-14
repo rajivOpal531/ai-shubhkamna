@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { Adjust } from './Adjust';
 import type { CutoutResult, Template } from '../types';
 
-const TEMPLATE: Template = { id: 'card-2', image: 'data:image/jpeg;base64,tpl' };
+const TEMPLATE: Template = { id: 'card-2', image: 'data:image/jpeg;base64,tpl', cleanImage: 'data:image/jpeg;base64,clean' };
 
 const CUTOUT: CutoutResult = {
   blob: new Blob(['png'], { type: 'image/png' }),

@@ -122,7 +122,8 @@ export function Adjust({ template, cutout, busy = false, error, onCancel, onAppl
       <p className="adjust__hint">Drag to reposition and use the slider to resize your photo.</p>
 
       <div className="adjust__stage" ref={stageRef} style={{ height: dispH || undefined }}>
-        <img className="adjust__template" src={template.image} alt="" draggable={false} />
+        {/* Clean template (no avatar-placeholder silhouette), so only the user's photo shows over it. */}
+        <img className="adjust__template" src={template.cleanImage} alt="" draggable={false} />
         {/* Caption keep-clear hint */}
         {factor > 0 && (
           <div

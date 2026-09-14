@@ -10,6 +10,9 @@ export type Profile = {
 export type Template = {
   id: string;
   image: string;
+  // The template without the avatar-placeholder silhouette (the version the backend composites
+  // onto). Used as the Adjust-photo background so only the user's own photo shows over it.
+  cleanImage: string;
 };
 
 export type CompositeResult = {

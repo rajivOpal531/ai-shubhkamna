@@ -15,7 +15,7 @@ import { Processing } from './Processing';
 import { CompositeError } from '../services/composite';
 import type { Profile, Template } from '../types';
 
-const TEMPLATE: Template = { id: 'card-1', image: 'data:image/jpeg;base64,x' };
+const TEMPLATE: Template = { id: 'card-1', image: 'data:image/jpeg;base64,x', cleanImage: 'data:image/jpeg;base64,x' };
 const PROFILE: Profile = { username: '', email: '', mobileno: '', state: '', constituency: '', district: '' };
 const PHOTO = new Blob(['bytes'], { type: 'image/jpeg' });
 

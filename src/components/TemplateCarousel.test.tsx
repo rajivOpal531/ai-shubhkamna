@@ -5,9 +5,9 @@ import { TemplateCarousel } from './TemplateCarousel';
 import type { Template } from '../types';
 
 const TEMPLATES: Template[] = [
-  { id: 't1', image: 'data:image/png;base64,aaa' },
-  { id: 't2', image: 'data:image/png;base64,bbb' },
-  { id: 't3', image: 'data:image/png;base64,ccc' },
+  { id: 't1', image: 'data:image/png;base64,aaa', cleanImage: 'data:image/png;base64,aaa' },
+  { id: 't2', image: 'data:image/png;base64,bbb', cleanImage: 'data:image/png;base64,bbb' },
+  { id: 't3', image: 'data:image/png;base64,ccc', cleanImage: 'data:image/png;base64,ccc' },
 ];
 
 describe('TemplateCarousel', () => {

@@ -26,6 +26,12 @@ RUN python -c "from rembg import new_session; new_session('isnet-general-use')" 
 # Fail the build if Pillow cannot see libraqm (text shaping for Indic scripts would silently break).
 RUN python -c "from PIL import features; assert features.check('raqm'), 'libraqm not available to Pillow'"
 
+# Fail the build if HEIC support is broken -- iOS gallery photos are HEIC, so a silent pillow-heif
+# failure would make ~all iPhone uploads error. Round-trips a HEIC image to prove decode works.
+RUN python -c "import io, pillow_heif; pillow_heif.register_heif_opener(); \
+from PIL import Image; b=io.BytesIO(); Image.new('RGB',(32,32),(1,2,3)).save(b, format='HEIF'); \
+im=Image.open(io.BytesIO(b.getvalue())); im.load(); assert im.size==(32,32); print('HEIC decode OK')"
+
 COPY app ./app
 COPY templates ./templates
 

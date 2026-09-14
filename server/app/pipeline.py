@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import statistics
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,8 +19,11 @@ try:
     import pillow_heif
 
     pillow_heif.register_heif_opener()
-except Exception:  # pragma: no cover - pillow-heif should be installed; degrade gracefully if not
-    pass
+    HEIF_SUPPORTED = True
+except Exception as exc:  # pragma: no cover
+    # Log loudly rather than swallow: without this, every iPhone (HEIC) upload fails as "unsupported".
+    logging.getLogger("ai-shubh").error("HEIC support unavailable -- pillow-heif failed to load: %r", exc)
+    HEIF_SUPPORTED = False
 
 MAX_SIDE = 2000
 MAX_PIXELS = 24_000_000  # ~2x headroom over a 12 MP phone photo; PNG/WebP skip the JPEG draft downscale below

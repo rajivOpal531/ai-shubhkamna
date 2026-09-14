@@ -48,7 +48,7 @@ log = logging.getLogger("ai-shubh")
 
 TokenValidator = Callable[[str], Awaitable[bool]]
 
-ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 MULTIPART_OVERHEAD = 64 * 1024  # form fields, boundaries and part headers around the photo
 QUEUE_FACTOR = 4  # requests allowed to queue per composite slot before we shed load
 

@@ -55,6 +55,16 @@ def test_decode_photo_rejects_garbage():
         decode_photo(b"definitely not an image")
 
 
+def test_decode_photo_reads_heic():
+    """iOS gallery photos are HEIC; pipeline registers the HEIF opener so they decode (not rejected)."""
+    src = Image.new("RGB", (640, 480), (120, 160, 200))
+    buf = io.BytesIO()
+    src.save(buf, format="HEIF", quality=80)  # pillow-heif opener is registered on importing app.pipeline
+    img = decode_photo(buf.getvalue())
+    assert img.mode == "RGB"
+    assert img.size == (640, 480)
+
+
 def test_decode_photo_does_not_upscale_small_images():
     data = make_photo_bytes(width=300, height=200)
     img = decode_photo(data)
@@ -407,15 +417,23 @@ def test_compose_never_covers_baked_text_keepouts(photo_bytes):
             assert diff.getbbox() is None, (placement.template_id, i, kb)
 
 
-def test_compose_flags_text_overlap_when_photo_reaches_a_keepout(photo_bytes):
+def test_compose_flags_text_overlap_for_a_close_up_face(photo_bytes):
+    # The photo is now confined clear of every text box, so a full-frame cutout does NOT raise the
+    # warning; the warning instead signals a close-up face (too big to be an "upper body" shot).
+    placement = load_placements()["card-2"]
+    close_up = lambda img: [(0.3, 0.2, 0.5, 0.5)]  # one face at 25% of the frame (> FACE_MAX_AREA_RATIO)
+    assert compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=close_up).text_overlap is True
+
+
+def test_compose_confines_photo_clear_of_text_so_no_warning(photo_bytes):
     def full_opaque_remover(img: Image.Image) -> Image.Image:
         rgba = img.convert("RGBA")
         rgba.putalpha(Image.new("L", img.size, 255))
         return rgba
 
-    # card-2's message keepout overlaps the photo box, so a full-frame cutout must raise the warning.
+    # A full-frame opaque cutout is shifted clear of the caption/title/message, so no overlap warning.
     placement = load_placements()["card-2"]
-    assert compose(photo_bytes, placement, TextFields(), full_opaque_remover).text_overlap is True
+    assert compose(photo_bytes, placement, TextFields(), full_opaque_remover).text_overlap is False
 
 
 def test_compose_raises_no_subject_when_remover_returns_transparent(photo_bytes):

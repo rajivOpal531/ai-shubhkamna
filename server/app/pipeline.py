@@ -12,6 +12,15 @@ from .faces import FaceDetector
 from .placements import Box, Placement
 from .remover import Remover
 
+# Teach Pillow to open HEIC/HEIF so iOS gallery photos (which are HEIC by default) decode instead of
+# failing as "unsupported". pillow-heif bundles libheif, so no system package is required.
+try:
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+except Exception:  # pragma: no cover - pillow-heif should be installed; degrade gracefully if not
+    pass
+
 MAX_SIDE = 2000
 MAX_PIXELS = 24_000_000  # ~2x headroom over a 12 MP phone photo; PNG/WebP skip the JPEG draft downscale below
 ALPHA_THRESHOLD = 8
@@ -261,6 +270,15 @@ def clear_of_text(photo_box: Box, text_box: Box) -> Box:
     return Box(new_x, photo_box.y, new_w, photo_box.h)
 
 
+def clear_of_all_text(photo_box: Box, boxes: tuple[Box, ...]) -> Box:
+    """Shrink `photo_box` so it clears every text region. Fitting the photo into the result keeps it a
+    solid, opaque cutout (no rectangular holes masked through it) while never covering the text."""
+    box = photo_box
+    for text_box in boxes:
+        box = clear_of_text(box, text_box)
+    return box
+
+
 def _mask_out_text_box(cutout: Image.Image, x: int, y: int, text_box: Box) -> None:
     """Zero the alpha of any cutout pixels that fall inside `text_box` (with a margin), so the person
     can never be drawn over the caption even if the fitted box still slightly intersects it."""
@@ -322,13 +340,15 @@ def compose(
         card = template.convert("RGB")
     # Fit the person into the part of the photo box that is clear of the caption, then mask any pixels
     # that still reach into the caption. The photo never covers the text; the caption is drawn last.
-    clear_box = clear_of_text(placement.photo_box, placement.text_box)
+    # Confine the photo to the region clear of the caption AND the baked title/message. Fitting into
+    # that region keeps the cutout solid and opaque (no holes) while never covering any text; the
+    # person may still overlap the template artwork, which is fine.
+    protected = (placement.text_box, *placement.text_keepout)
+    clear_box = clear_of_all_text(placement.photo_box, protected)
     fitted = fit_bottom_center(cutout.size, clear_box)
     cutout = cutout.resize((fitted.w, fitted.h), Image.LANCZOS)
-    # The caption plus every baked-in text region (title, message) must stay clear of the photo.
-    # Detect the overlap before masking, so we can warn the user; the mask then guarantees no text
-    # is ever covered (the person may still overlap the template artwork, which is fine).
-    protected = (placement.text_box, *placement.text_keepout)
+    # Detect any overlap before masking so we can warn the user; the mask is a safety net for the rare
+    # case where there was no room to shift the photo fully clear of a text box.
     text_overlap = face_close_up or any(_opaque_in_text_box(cutout, fitted.x, fitted.y, b) for b in protected)
     for b in protected:
         _mask_out_text_box(cutout, fitted.x, fitted.y, b)

@@ -46,9 +46,16 @@ function Flow() {
   const [adjustError, setAdjustError] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  // Once the user edits the name, never let a late-arriving profile fetch overwrite it.
+  const nameTouched = useRef(false);
 
   // The Adjust screen needs a real /cutout + /composite backend; hide it in the mock demo flow.
   const adjustEnabled = !config.useMockComposite;
+
+  function handleNameChange(value: string) {
+    nameTouched.current = true;
+    setName(value);
+  }
 
   // On a failed composite, Retake/Reupload should reopen the same source the photo came from.
   function repickPhoto() {
@@ -59,7 +66,9 @@ function Flow() {
   useEffect(() => {
     getProfile(jwt).then((fetched) => {
       setProfile(fetched);
-      if (fetched.username) {
+      // Prefill from the profile only if the user hasn't already typed a name (the fetch can resolve
+      // after the user has edited it, which would otherwise clobber their edit back to the JWT name).
+      if (fetched.username && !nameTouched.current) {
         setName(fetched.username);
       }
     });
@@ -150,7 +159,7 @@ function Flow() {
       {step === 'landing' && (
         <Landing
           name={name}
-          onNameChange={setName}
+          onNameChange={handleNameChange}
           selectedTemplateId={templateId}
           onSelectTemplate={setTemplateId}
           onCapture={() => setStep('tips')}
@@ -207,7 +216,7 @@ function Flow() {
           }}
           onError={repickPhoto}
           onRestart={() => setStep('landing')}
-          onHome={() => redirectWithJwt(config.homeUrl, jwt)}
+          onHome={() => setStep('landing')}
         />
       )}
       {step === 'preview' && composited && (

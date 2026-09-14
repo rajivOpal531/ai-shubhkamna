@@ -4,7 +4,7 @@
 # One-time host setup: see DEPLOYMENT.md, "EC2 + Caddy behind CloudFront".
 set -euo pipefail
 
-# Everything runs inside main() so bash has parsed the whole script before `git pull` rewrites it.
+# Everything runs inside functions so bash has parsed the whole script before `git pull` rewrites it.
 main() {
   local target="${1:-all}"
   case "$target" in
@@ -35,42 +35,45 @@ main() {
 
   cd "$deploy_dir"
   if [[ "$target" == all || "$target" == api ]]; then
-    echo ">> Rebuilding API image"
+    echo ">> Building API image"
     docker compose build api
   fi
 
-  echo ">> Starting / updating containers"
-  docker compose up -d
+  echo ">> Updating Caddy"
+  docker compose up -d --no-deps caddy
+  reload_caddy
 
-  echo ">> Reloading Caddy config"
+  if [[ "$target" == all || "$target" == api || -z "$(docker compose ps -q api)" ]]; then
+    "$deploy_dir/rollout-api.sh"
+  fi
+
+  echo ">> Checking /health through Caddy"
   local i
-  for i in $(seq 1 10); do
-    # A just-recreated Caddy needs a moment before its admin endpoint accepts a reload.
-    if docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
-      break
-    fi
-    if [[ $i == 10 ]]; then
-      echo "!! Caddy reload failed" >&2
-      exit 1
-    fi
-    sleep 2
-  done
-
-  echo ">> Waiting for the API (model load takes about a minute after a rebuild)"
-  for i in $(seq 1 60); do
-    if curl -fsS http://localhost/health; then
+  for i in $(seq 1 20); do
+    if curl -fsS http://localhost/health 2>/dev/null; then
       echo
-      break
-    fi
-    if [[ $i == 60 ]]; then
-      echo "!! API not healthy after 3 minutes" >&2
-      docker compose logs --tail 50 api
-      exit 1
+      echo ">> Deployed. Public check: https://shubhkamnauat.narendramodi.in/health"
+      return 0
     fi
     sleep 3
   done
+  echo "!! /health is not answering through Caddy" >&2
+  docker compose ps >&2
+  exit 1
+}
 
-  echo ">> Deployed. Public check: https://shubhkamnauat.narendramodi.in/health"
+reload_caddy() {
+  local i
+  for i in $(seq 1 10); do
+    # A just-recreated Caddy needs a moment before its admin endpoint accepts a reload.
+    if docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "!! Caddy reload failed:" >&2
+  docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile >&2
+  exit 1
 }
 
 main "$@"

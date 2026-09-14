@@ -55,8 +55,18 @@ echo "SERVER_NAME=mumbai" > .env                          # optional: sent back 
 ~/ai-shubhkamna/deploy/deploy.sh       # both
 ```
 
-The script pulls `master`, builds what changed, restarts containers whose config changed, reloads
-Caddy without downtime, and waits for `/health`.
+The script pulls `master`, builds what changed, reloads Caddy without downtime, and replaces the API
+with `deploy/rollout-api.sh`:
+
+1. A new `api` container starts next to the running one (`docker compose --scale api=2`).
+2. If its image and config are identical to the running one, it is removed at once (nothing to do).
+3. Otherwise the script waits for its `/health` (loading the model takes about a minute), then stops
+   the old container, which gets 30 s to finish in-flight requests.
+
+Caddy resolves every `api` container and retries a refused connection on another one, so requests
+keep working throughout: no 502s while the model loads. If the new container crashes or never gets
+healthy, it is removed and the old one keeps serving (the script exits non-zero). With less than
+2.5 GB of free RAM it falls back to an in-place restart, which does cause about a minute of errors.
 
 ### Adding a backend route
 

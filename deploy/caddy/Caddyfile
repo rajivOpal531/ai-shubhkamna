@@ -17,7 +17,21 @@
 	# Every backend route must be listed here, or the request falls through to the SPA below.
 	@api path /composite /cutout /profile /health
 	handle @api {
-		reverse_proxy api:8000 {
+		reverse_proxy {
+			# Every running api container: normally one, two during a rollout (deploy/rollout-api.sh).
+			dynamic a {
+				name api
+				port 8000
+				refresh 1s
+			}
+			# A container still loading its model refuses connections; retry another one rather than
+			# answering 502. Dial failures are retried for every method, POST included.
+			lb_try_duration 15s
+			lb_try_interval 250ms
+			fail_duration 5s
+			transport http {
+				dial_timeout 2s
+			}
 			# The backend's per-IP rate limit reads the rightmost X-Forwarded-For entry. Replace the
 			# header with the viewer IP CloudFront reports, instead of appending CloudFront's edge IP.
 			header_up X-Forwarded-For {http.request.header.CloudFront-Viewer-Address}

@@ -62,7 +62,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         rate_limit_per_ip_per_minute=rate_limit_per_ip_per_minute,
         rate_limit_storage_uri=env.get("RATE_LIMIT_STORAGE_URI", "").strip(),
         jwt_validate_url=env.get("JWT_VALIDATE_URL", "").strip(),
-        max_upload_bytes=10 * 1024 * 1024,
+        # A 48 MP phone photo (HEIF Max, or JPEG from "Most Compatible") can exceed 10 MB. Keep
+        # deploy/caddy/Caddyfile's request_body max_size above this plus MULTIPART_OVERHEAD.
+        max_upload_bytes=20 * 1024 * 1024,
         model_name=env.get("REMBG_MODEL", "isnet-general-use"),
         max_concurrent_composites=max_concurrent_composites,
         max_field_chars=120,

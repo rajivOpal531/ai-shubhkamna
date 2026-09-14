@@ -10,8 +10,10 @@
 	# Which EC2 answered (set SERVER_NAME in deploy/.env, e.g. "mumbai"); handy during migrations.
 	header X-Served-By {$SERVER_NAME:ec2}
 
+	# Must stay above the backend's own cap (20 MiB photo + 64 KiB multipart = 21,036,800 bytes) so an
+	# oversized upload gets the API's JSON 413 instead of being cut off here. Caddy's MB is 10^6 bytes.
 	request_body {
-		max_size 11MB
+		max_size 22MB
 	}
 
 	# Every backend route must be listed here, or the request falls through to the SPA below.

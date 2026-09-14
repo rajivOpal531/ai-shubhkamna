@@ -26,7 +26,11 @@ except Exception as exc:  # pragma: no cover
     HEIF_SUPPORTED = False
 
 MAX_SIDE = 2000
-MAX_PIXELS = 24_000_000  # ~2x headroom over a 12 MP phone photo; PNG/WebP skip the JPEG draft downscale below
+# Phones now shoot 24 MP by default (iPhone 15/16: 5664x4248 = 24.06 MP) and 48 MP in "HEIF Max"
+# (8064x6048 = 48.8 MP). Decoding only runs inside the composite limiter, so at most
+# MAX_CONCURRENT_COMPOSITES full-size decodes (~150-200 MB each for HEIC/PNG, which skip the JPEG
+# draft downscale below) are in memory at once.
+MAX_PIXELS = 50_000_000
 ALPHA_THRESHOLD = 8
 FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Satoshi-Bold.ttf"
 LINE_HEIGHT_FACTOR = 1.25

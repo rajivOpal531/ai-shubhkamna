@@ -22,7 +22,7 @@ def test_defaults_when_env_is_empty():
     assert s.rate_limit_per_ip_per_minute == 30
     assert s.rate_limit_storage_uri == ""
     assert s.jwt_validate_url == ""
-    assert s.max_upload_bytes == 10 * 1024 * 1024
+    assert s.max_upload_bytes == 20 * 1024 * 1024  # a 48 MP phone photo can exceed 10 MB
     assert s.model_name == "isnet-general-use"
     assert s.max_concurrent_composites == 2
     assert s.max_field_chars == 120

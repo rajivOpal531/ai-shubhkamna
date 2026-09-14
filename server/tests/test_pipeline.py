@@ -78,6 +78,29 @@ def test_decode_photo_rejects_images_over_max_pixels(monkeypatch):
         decode_photo(data)
 
 
+@pytest.mark.parametrize(
+    ("width", "height"),
+    [
+        (5664, 4248),  # iPhone 15/16 default: 24.06 MP, which the old 24,000,000 cap rejected
+        (8064, 6048),  # iPhone Pro "48 MP HEIF Max"
+    ],
+)
+def test_decode_photo_accepts_current_iphone_resolutions(width, height):
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), (120, 160, 200)).save(buf, "JPEG", quality=70)
+    img = decode_photo(buf.getvalue())
+    assert img.mode == "RGB"
+    assert max(img.size) == MAX_SIDE
+
+
+def test_decode_photo_still_rejects_a_canvas_just_over_50_mp():
+    # A small file declaring a huge canvas must fail before load(). A 1-bit PNG keeps the fixture cheap.
+    buf = io.BytesIO()
+    Image.new("1", (8200, 6200)).save(buf, "PNG")  # 50.84 MP
+    with pytest.raises(BadImageError, match="too large"):
+        decode_photo(buf.getvalue())
+
+
 def test_decode_photo_wraps_errors_after_open(monkeypatch):
     def boom(img):
         raise OSError("bad exif")

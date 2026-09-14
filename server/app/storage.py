@@ -12,7 +12,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 S3_CONFIG = Config(
     connect_timeout=5,
-    read_timeout=30,  # max body is 10 MB; 30 s is generous
+    read_timeout=30,  # uploads are finished card JPEGs (well under 1 MB); 30 s is generous
     retries={"max_attempts": 3, "mode": "standard"},
     # Path-style avoids the TLS SNI break on bucket names that contain dots
     # (virtual-hosted "my.bucket.s3.region.amazonaws.com" fails the wildcard cert).

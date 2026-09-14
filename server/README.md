@@ -16,7 +16,7 @@ philosophy) see
 
 | Field          | Type   | Required | Notes                                                   |
 | -------------- | ------ | -------- | -------------------------------------------------------- |
-| `photo`        | file   | yes      | jpeg/png/webp, ≤ 10 MB                                    |
+| `photo`        | file   | yes      | jpeg/png/webp/heic, ≤ 20 MB and ≤ 50 MP (48 MP phones)    |
 | `template`     | string | yes      | a template id from `templates/placements.json`           |
 | `name`         | string | no       | ≤ 120 characters                                          |
 | `constituency` | string | no       | ≤ 120 characters                                          |

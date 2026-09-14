@@ -130,6 +130,15 @@ async function realCompositePhoto({
       return { imageUrl: data.imageUrl, warning: response.headers.get('X-Poster-Warning') };
     }
 
+    // A 200 that isn't an image means a proxy/CDN masked an origin error as its SPA/HTML page (seen
+    // when CloudFront serves index.html on origin errors). Treat it as a failure, never as a card.
+    if (!contentType.includes('image/')) {
+      throw new CompositeError(
+        'Compositing service returned an unexpected response',
+        response.status,
+        response.headers.get('X-Request-Id'),
+      );
+    }
     const blob = await response.blob();
     if (!blob.size) {
       throw new CompositeError(

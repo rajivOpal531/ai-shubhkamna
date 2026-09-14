@@ -12,6 +12,7 @@ import { templates } from './data/templates';
 import { getProfile } from './services/profile';
 import { createPostByImageUrl, createPostWithFile } from './services/createPost';
 import { fetchCutout, compositeCutout, CompositeError } from './services/composite';
+import { downscaleImage } from './utils/downscaleImage';
 import { redirectWithJwt } from './utils/redirect';
 import { config } from './config';
 import type { CompositeResult, CutoutResult, Profile, Rect, Step } from './types';
@@ -76,14 +77,16 @@ function Flow() {
 
   const selectedTemplate = templates.find((template) => template.id === templateId) ?? templates[0];
 
-  function handleFileSelected(file: File) {
-    setPhoto(file);
+  async function handleFileSelected(file: File) {
+    const photo = await downscaleImage(file);
+    setPhoto(photo);
     setPhotoSource('upload');
     setStep('processing');
   }
 
-  function handleCaptured(blob: Blob) {
-    setPhoto(blob);
+  async function handleCaptured(blob: Blob) {
+    const photo = await downscaleImage(blob);
+    setPhoto(photo);
     setPhotoSource('capture');
     setStep('processing');
   }

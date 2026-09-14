@@ -45,6 +45,9 @@ class Placement:
     text_color: str
     font_size: int
     align: Literal["left", "right"]
+    # Extra baked-in text regions (title, message) the composited photo must never cover. The
+    # caption (text_box) is masked and redrawn separately; these are only masked out of the photo.
+    text_keepout: tuple[Box, ...] = ()
 
     @property
     def template_path(self) -> Path:
@@ -91,6 +94,16 @@ def load_placements(path: Path = PLACEMENTS_PATH) -> dict[str, Placement]:
             if not text_box.inside(CARD_SIZE):
                 raise ValueError(f"text_box outside card: {text_box}")
 
+            keepout_raw = entry.get("text_keepout", [])
+            if not isinstance(keepout_raw, list):
+                raise ValueError("text_keepout must be a list of boxes")
+            text_keepout: list[Box] = []
+            for i, kb in enumerate(keepout_raw):
+                box = _box({"kb": kb}, "kb")
+                if not box.inside(CARD_SIZE):
+                    raise ValueError(f"text_keepout[{i}] outside card: {box}")
+                text_keepout.append(box)
+
             placements[template_id] = Placement(
                 template_id=template_id,
                 photo_box=photo_box,
@@ -98,6 +111,7 @@ def load_placements(path: Path = PLACEMENTS_PATH) -> dict[str, Placement]:
                 text_color=text_color,
                 font_size=font_size,
                 align=align,
+                text_keepout=tuple(text_keepout),
             )
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise ValueError(f"{template_id}: bad placement entry ({exc})") from exc

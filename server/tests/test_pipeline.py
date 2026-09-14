@@ -301,7 +301,7 @@ def test_layout_caption_wraps_long_location_onto_two_lines():
 
     assert lines == ["-Rajiv Ranjan", "Gautam Buddha Nagar,", "Uttar Pradesh"]
     assert all(draw.textlength(line, font=font) <= placement.text_box.w for line in lines)
-    assert font.size >= round(36 * 0.6)
+    assert font.size >= round(placement.font_size * 0.6)
 
 
 def test_layout_caption_keeps_short_location_on_one_line():
@@ -313,7 +313,7 @@ def test_layout_caption_keeps_short_location_on_one_line():
     lines, font = layout_caption(draw, fields, FONT_PATH, placement.font_size, placement.text_box)
 
     assert lines == ["-Rajiv", "Patna, Bihar"]
-    assert font.size == 36
+    assert font.size == placement.font_size
 
 
 def test_layout_caption_without_constituency_does_not_split():
@@ -384,6 +384,38 @@ def test_compose_pastes_cutout_inside_photo_box(photo_bytes):
     cx, cy = pb.x + pb.w // 2, pb.bottom - 10
     r, g, b = img.getpixel((cx, cy))
     assert abs(r - 230) < 20 and abs(g - 200) < 20 and abs(b - 180) < 20
+
+
+def test_compose_never_covers_baked_text_keepouts(photo_bytes):
+    """The composited photo may overlap the template artwork but must leave every baked text region
+    (title, message) untouched. A fully-opaque cutout would cover them if masking were missing."""
+
+    def full_opaque_remover(img: Image.Image) -> Image.Image:
+        rgba = img.convert("RGBA")
+        rgba.putalpha(Image.new("L", img.size, 255))  # every pixel opaque -> fills the whole photo box
+        return rgba
+
+    for placement in load_placements().values():
+        with Image.open(placement.template_path) as template:
+            clean = template.convert("RGB")
+        out = Image.open(io.BytesIO(compose(photo_bytes, placement, TextFields(), full_opaque_remover).jpeg)).convert("RGB")
+        for i, kb in enumerate(placement.text_keepout):
+            clean_crop = clean.crop((kb.x, kb.y, kb.right, kb.bottom))
+            out_crop = out.crop((kb.x, kb.y, kb.right, kb.bottom))
+            # JPEG is lossy, so allow a small tolerance; a covered region would differ by far more.
+            diff = ImageChops.difference(clean_crop, out_crop).convert("L").point(lambda p: 255 if p > 40 else 0)
+            assert diff.getbbox() is None, (placement.template_id, i, kb)
+
+
+def test_compose_flags_text_overlap_when_photo_reaches_a_keepout(photo_bytes):
+    def full_opaque_remover(img: Image.Image) -> Image.Image:
+        rgba = img.convert("RGBA")
+        rgba.putalpha(Image.new("L", img.size, 255))
+        return rgba
+
+    # card-2's message keepout overlaps the photo box, so a full-frame cutout must raise the warning.
+    placement = load_placements()["card-2"]
+    assert compose(photo_bytes, placement, TextFields(), full_opaque_remover).text_overlap is True
 
 
 def test_compose_raises_no_subject_when_remover_returns_transparent(photo_bytes):

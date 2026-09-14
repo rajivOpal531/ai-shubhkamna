@@ -325,9 +325,13 @@ def compose(
     clear_box = clear_of_text(placement.photo_box, placement.text_box)
     fitted = fit_bottom_center(cutout.size, clear_box)
     cutout = cutout.resize((fitted.w, fitted.h), Image.LANCZOS)
-    # Detect the overlap before masking, so we can warn the user; the mask still keeps the caption readable.
-    text_overlap = face_close_up or _opaque_in_text_box(cutout, fitted.x, fitted.y, placement.text_box)
-    _mask_out_text_box(cutout, fitted.x, fitted.y, placement.text_box)
+    # The caption plus every baked-in text region (title, message) must stay clear of the photo.
+    # Detect the overlap before masking, so we can warn the user; the mask then guarantees no text
+    # is ever covered (the person may still overlap the template artwork, which is fine).
+    protected = (placement.text_box, *placement.text_keepout)
+    text_overlap = face_close_up or any(_opaque_in_text_box(cutout, fitted.x, fitted.y, b) for b in protected)
+    for b in protected:
+        _mask_out_text_box(cutout, fitted.x, fitted.y, b)
     card.paste(cutout, (fitted.x, fitted.y), cutout)
     draw_text_block(card, placement, fields, font_path)
     buffer = io.BytesIO()
@@ -380,8 +384,10 @@ def compose_with_cutout(
     w = max(1, min(box.w, card.width - x))
     h = max(1, min(box.h, card.height - y))
     cutout = cutout.resize((w, h), Image.LANCZOS)
-    text_overlap = _opaque_in_text_box(cutout, x, y, placement.text_box)
-    _mask_out_text_box(cutout, x, y, placement.text_box)
+    protected = (placement.text_box, *placement.text_keepout)
+    text_overlap = any(_opaque_in_text_box(cutout, x, y, b) for b in protected)
+    for b in protected:
+        _mask_out_text_box(cutout, x, y, b)
     card.paste(cutout, (x, y), cutout)
     draw_text_block(card, placement, fields, font_path)
     buffer = io.BytesIO()

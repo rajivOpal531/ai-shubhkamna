@@ -44,6 +44,30 @@ describe('App', () => {
     vi.clearAllMocks();
   });
 
+  // Browsers need `capture` to open the camera directly: without it Chrome on Android 13+ shows the
+  // photo picker, which has no camera option. Android WebViews (the NaMo app) often ignore `capture`
+  // and leave the user stuck, so there the plain picker is used instead.
+  it.each([
+    {
+      name: 'a mobile browser',
+      ua: 'Mozilla/5.0 (Linux; Android 14; CPH2491) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36',
+      capture: 'environment',
+    },
+    {
+      name: 'the Android app WebView',
+      ua: 'Mozilla/5.0 (Linux; Android 14; CPH2491 Build/UKQ1.230924.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/128.0.6613.127 Mobile Safari/537.36',
+      capture: null,
+    },
+  ])('sets the camera input capture attribute for $name', ({ ua, capture }) => {
+    const uaSpy = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(ua);
+    try {
+      render(<App search="?jwt=test-jwt" />);
+      expect(screen.getByTestId('camera-input').getAttribute('capture')).toBe(capture);
+    } finally {
+      uaSpy.mockRestore();
+    }
+  });
+
   it('shows the missing-jwt screen when no jwt is present', () => {
     render(<App search="" />);
     expect(screen.getByText(/can't be opened directly/i)).toBeInTheDocument();

@@ -14,6 +14,7 @@ import { createPostByImageUrl, createPostWithFile } from './services/createPost'
 import { fetchCutout, compositeCutout, CompositeError } from './services/composite';
 import { downscaleImage } from './utils/downscaleImage';
 import { redirectWithJwt } from './utils/redirect';
+import { isAndroidWebView } from './utils/userAgent';
 import { config } from './config';
 import type { CompositeResult, CutoutResult, Profile, Rect, Step } from './types';
 
@@ -173,13 +174,15 @@ function Flow() {
       {step === 'tips' && (
         <Tips onProceed={() => cameraInputRef.current?.click()} onBack={() => setStep('landing')} />
       )}
-      {/* Camera path: no `capture` attribute. Android WebViews (the NaMo app) often don't honour
-          `capture`, leaving the user stuck; without it the same picker the gallery uses opens, from
-          which the user can choose Camera. Mobile browsers still show a camera option too. */}
+      {/* Camera path. In browsers `capture` opens the native camera directly (without it, Chrome on
+          Android 13+ shows the photo picker, which has no camera option). Android WebViews (the NaMo
+          app) often ignore `capture` and leave the user stuck, so there the plain picker opens instead,
+          from which the user can choose Camera. */}
       <input
         ref={cameraInputRef}
         type="file"
         accept="image/*"
+        capture={isAndroidWebView(navigator.userAgent) ? undefined : 'environment'}
         hidden
         data-testid="camera-input"
         onChange={(event) => {

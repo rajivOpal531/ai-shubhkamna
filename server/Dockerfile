@@ -10,8 +10,11 @@ WORKDIR /srv
 # conjuncts/matras in the name line. libglib2.0-0 is required by opencv-python-headless (pulled in
 # by rembg); libgl1 is kept defensively for onnxruntime -- try dropping it once a build proves it
 # unnecessary.
+# libgl1/libglib2.0-0: opencv (via rembg). libraqm0/libfribidi0/libharfbuzz0b: Indic text shaping.
+# libheif1/libde265-0: HEIC/HEVC decode for iOS gallery photos (pillow-heif can use these at runtime).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libraqm0 libfribidi0 libharfbuzz0b \
+ && apt-get install -y --no-install-recommends \
+      libgl1 libglib2.0-0 libraqm0 libfribidi0 libharfbuzz0b libheif1 libde265-0 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

@@ -421,7 +421,7 @@ def test_compose_flags_text_overlap_for_a_close_up_face(photo_bytes):
     # The photo is now confined clear of every text box, so a full-frame cutout does NOT raise the
     # warning; the warning instead signals a close-up face (too big to be an "upper body" shot).
     placement = load_placements()["card-2"]
-    close_up = lambda img: [(0.3, 0.2, 0.5, 0.5)]  # one face at 25% of the frame (> FACE_MAX_AREA_RATIO)
+    close_up = lambda img: [(0.15, 0.1, 0.6, 0.7)]  # one face at 42% of the frame (> FACE_MAX_AREA_RATIO)
     assert compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=close_up).text_overlap is True
 
 
@@ -504,8 +504,8 @@ def test_compose_returns_rendered_with_overlap_flag(photo_bytes):
 
 def test_compose_flags_overlap_for_a_close_up_face(photo_bytes):
     placement = load_placements()["card-1"]
-    # a single face covering ~30% of the frame -> close-up -> poster warning
-    big_face = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: [(0.3, 0.2, 0.55, 0.55)])
+    # a single face filling ~42% of the frame -> extreme close-up -> poster warning
+    big_face = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: [(0.15, 0.1, 0.6, 0.7)])
     assert big_face.text_overlap is True
     # a small face (upper-body framing) -> no warning
     small_face = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: [(0.4, 0.1, 0.1, 0.1)])

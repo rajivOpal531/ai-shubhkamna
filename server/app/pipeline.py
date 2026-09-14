@@ -31,9 +31,10 @@ LINE_HEIGHT_FACTOR = 1.25
 # going smaller; normal-length names/locations render at the placement's full size.
 MIN_FONT_PX = 20
 
-# A single face larger than this fraction of the photo is a close-up, not the "upper body in full"
-# the poster wants -- flag it so the app can suggest a better photo.
-FACE_MAX_AREA_RATIO = 0.08
+# Only an extreme face-fills-the-frame close-up should prompt "upload your upper body". A normal
+# head-and-shoulders shot already measures ~0.076, so the threshold sits well above that; the
+# compositor now places any photo cleanly, so this only catches genuinely tight face crops.
+FACE_MAX_AREA_RATIO = 0.35
 
 Font = ImageFont.FreeTypeFont
 
@@ -311,6 +312,20 @@ def _paste_alpha(alpha: Image.Image, clear: Image.Image, left: int, top: int) ->
     return alpha
 
 
+def _paste_clipped(card: Image.Image, cutout: Image.Image, x: int, y: int) -> None:
+    """Paste `cutout` with its top-left at (x, y), clipping whatever falls outside the card (x/y may be
+    negative or push the cutout past an edge). This crops overflow instead of squashing it, so the
+    result matches the Adjust preview, which crops the photo at the card border the same way."""
+    left = max(0, -x)
+    top = max(0, -y)
+    right = min(cutout.width, card.width - x)
+    bottom = min(cutout.height, card.height - y)
+    if right <= left or bottom <= top:
+        return
+    piece = cutout.crop((left, top, right, bottom))
+    card.paste(piece, (x + left, y + top), piece)
+
+
 def compose(
     photo_bytes: bytes,
     placement: Placement,
@@ -398,17 +413,17 @@ def compose_with_cutout(
     cutout = Image.open(io.BytesIO(cutout_bytes)).convert("RGBA")
     with Image.open(placement.template_path) as template:
         card = template.convert("RGB")
-    # Clamp the requested box to the card so a bad transform can never paste out of bounds.
-    x = max(0, min(box.x, card.width - 1))
-    y = max(0, min(box.y, card.height - 1))
-    w = max(1, min(box.w, card.width - x))
-    h = max(1, min(box.h, card.height - y))
+    # Resize to the exact size the user chose (preserving its aspect ratio); the box may run past the
+    # card edges, which is fine -- _paste_clipped crops the overflow just like the Adjust preview does.
+    # Squashing w/h independently to fit the card (the old behaviour) distorted the photo.
+    x, y = round(box.x), round(box.y)
+    w, h = max(1, round(box.w)), max(1, round(box.h))
     cutout = cutout.resize((w, h), Image.LANCZOS)
     protected = (placement.text_box, *placement.text_keepout)
     text_overlap = any(_opaque_in_text_box(cutout, x, y, b) for b in protected)
     for b in protected:
         _mask_out_text_box(cutout, x, y, b)
-    card.paste(cutout, (x, y), cutout)
+    _paste_clipped(card, cutout, x, y)
     draw_text_block(card, placement, fields, font_path)
     buffer = io.BytesIO()
     card.save(buffer, "JPEG", quality=90, subsampling=0, optimize=True)

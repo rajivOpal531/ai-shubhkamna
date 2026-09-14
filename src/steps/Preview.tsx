@@ -18,6 +18,8 @@ type Props = {
   showProcessedToast?: boolean;
   onDismissToast?: () => void;
   onRetake: () => void;
+  onAdjust?: () => void;
+  adjusting?: boolean;
   onPost: () => void;
 };
 
@@ -32,6 +34,8 @@ export function Preview({
   showProcessedToast = false,
   onDismissToast,
   onRetake,
+  onAdjust,
+  adjusting = false,
   onPost,
 }: Props) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -69,6 +73,15 @@ export function Preview({
       </header>
 
       <img className="preview__card" src={previewSrc} alt="Your birthday card" />
+
+      {onAdjust && (
+        <button type="button" className="preview__adjust" onClick={onAdjust} disabled={posting || adjusting}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 7h11M4 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0Zm12 10H5m11 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm0 0h4M8 7h12M4 17h1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {adjusting ? 'Preparing…' : 'Adjust photo'}
+        </button>
+      )}
 
       <h2 className="preview__title">Wishes for PM Modi</h2>
 

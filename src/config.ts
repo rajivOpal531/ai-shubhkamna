@@ -5,6 +5,11 @@ export const config = {
   createPostFileEndpoint: (import.meta.env.VITE_CREATE_POST_FILE_URL as string) || '',
   profileUrl: (import.meta.env.VITE_PROFILE_URL as string) || '',
   compositeUrl: (import.meta.env.VITE_COMPOSITE_URL as string) || '',
+  // Adjust-photo step one: same host as /composite, but the /cutout route. Overridable if the two
+  // ever diverge.
+  cutoutUrl:
+    (import.meta.env.VITE_CUTOUT_URL as string) ||
+    ((import.meta.env.VITE_COMPOSITE_URL as string) || '').replace(/\/composite(\/?)$/, '/cutout$1'),
   useMockProfile: import.meta.env.VITE_USE_MOCK_PROFILE !== 'false',
   useMockComposite: import.meta.env.VITE_USE_MOCK_COMPOSITE !== 'false',
 };

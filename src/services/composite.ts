@@ -1,5 +1,5 @@
 import { config } from '../config';
-import type { CompositeResult, Profile } from '../types';
+import type { CompositeResult, CutoutResult, Profile, Rect } from '../types';
 
 export const COMPOSITE_TIMEOUT_MS = 60_000;
 
@@ -11,6 +11,14 @@ type CompositeParams = {
   jwt: string;
   signal?: AbortSignal;
 };
+
+function parseRect(raw: string | null): Rect | null {
+  if (!raw) return null;
+  const parts = raw.split(',').map((v) => Number(v));
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null;
+  const [x, y, w, h] = parts;
+  return { x, y, w, h };
+}
 
 type Options = {
   useMock?: boolean;
@@ -140,6 +148,169 @@ async function realCompositePhoto({
         response.headers.get('X-Request-Id'),
       );
     }
+    throw new CompositeError('Compositing request failed or timed out', null, null);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+// --- Adjust-photo flow -----------------------------------------------------------------------
+
+type FetchCutoutParams = {
+  photo: Blob;
+  templateId: string;
+  jwt: string;
+  signal?: AbortSignal;
+};
+
+// POST /cutout: background-remove the upload and return the transparent PNG plus the template's
+// card/photo/text geometry, which the Adjust screen uses to place and constrain the cutout.
+export async function fetchCutout({ photo, templateId, jwt, signal }: FetchCutoutParams): Promise<CutoutResult> {
+  if (!config.cutoutUrl || config.cutoutUrl.includes('<')) {
+    throw new CompositeError('VITE_COMPOSITE_URL is not configured', null, null, 'config');
+  }
+
+  const form = new FormData();
+  form.append('template', templateId);
+  form.append('photo', photo, 'photo.jpg');
+
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  const timer = setTimeout(() => controller.abort(), COMPOSITE_TIMEOUT_MS);
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+
+  let response: Response | undefined;
+  try {
+    response = await fetch(config.cutoutUrl, {
+      method: 'POST',
+      body: form,
+      headers: { Authorization: `Bearer ${jwt}` },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      let code: string | null = null;
+      try {
+        const body = (await response.clone().json()) as { detail?: unknown };
+        if (typeof body?.detail === 'string') code = body.detail;
+      } catch {
+        // non-JSON body -- leave code null
+      }
+      throw new CompositeError(
+        `Cutout failed with status ${response.status}`,
+        response.status,
+        response.headers.get('X-Request-Id'),
+        undefined,
+        code,
+      );
+    }
+
+    const cardParts = (response.headers.get('X-Card-Size') ?? '').split(',').map(Number);
+    const photoBox = parseRect(response.headers.get('X-Photo-Box'));
+    const textBox = parseRect(response.headers.get('X-Text-Box'));
+    const blob = await response.blob();
+    const cardValid = cardParts.length === 2 && cardParts.every((n) => Number.isFinite(n) && n > 0);
+    if (!blob.size || !photoBox || !textBox || !cardValid) {
+      throw new CompositeError('Cutout response was incomplete', response.status, response.headers.get('X-Request-Id'));
+    }
+    return {
+      blob,
+      cardWidth: cardParts[0],
+      cardHeight: cardParts[1],
+      photoBox,
+      textBox,
+      warning: response.headers.get('X-Poster-Warning'),
+    };
+  } catch (err) {
+    if (err instanceof CompositeError) throw err;
+    throw new CompositeError('Cutout request failed or timed out', null, null);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+type CompositeCutoutParams = {
+  cutout: Blob;
+  box: Rect;
+  templateId: string;
+  profile: Profile;
+  jwt: string;
+  signal?: AbortSignal;
+};
+
+// POST /composite with a pre-made cutout + explicit box (the user-adjusted placement). Shares the
+// response handling shape with realCompositePhoto: JSON { imageUrl } in url mode, JPEG bytes otherwise.
+export async function compositeCutout({
+  cutout,
+  box,
+  templateId,
+  profile,
+  jwt,
+  signal,
+}: CompositeCutoutParams): Promise<CompositeResult> {
+  if (!config.compositeUrl || config.compositeUrl.includes('<')) {
+    throw new CompositeError('VITE_COMPOSITE_URL is not configured', null, null, 'config');
+  }
+
+  const form = new FormData();
+  form.append('template', templateId);
+  form.append('cutout', cutout, 'cutout.png');
+  form.append('box', `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.w)},${Math.round(box.h)}`);
+  form.append('name', profile.username);
+  form.append('constituency', profile.constituency);
+  form.append('state', profile.state);
+
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  const timer = setTimeout(() => controller.abort(), COMPOSITE_TIMEOUT_MS);
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+
+  let response: Response | undefined;
+  try {
+    response = await fetch(config.compositeUrl, {
+      method: 'POST',
+      body: form,
+      headers: { Authorization: `Bearer ${jwt}` },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      let code: string | null = null;
+      try {
+        const body = (await response.clone().json()) as { detail?: unknown };
+        if (typeof body?.detail === 'string') code = body.detail;
+      } catch {
+        // non-JSON body -- leave code null
+      }
+      throw new CompositeError(
+        `Compositing failed with status ${response.status}`,
+        response.status,
+        response.headers.get('X-Request-Id'),
+        undefined,
+        code,
+      );
+    }
+
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      const data = (await response.json()) as { imageUrl?: unknown };
+      if (typeof data.imageUrl !== 'string' || !data.imageUrl) {
+        throw new CompositeError('Compositing response had no imageUrl', response.status, response.headers.get('X-Request-Id'));
+      }
+      return { imageUrl: data.imageUrl, warning: response.headers.get('X-Poster-Warning') };
+    }
+
+    const blob = await response.blob();
+    if (!blob.size) {
+      throw new CompositeError('Compositing response was empty', response.status, response.headers.get('X-Request-Id'));
+    }
+    return { imageBlob: blob, warning: response.headers.get('X-Poster-Warning') };
+  } catch (err) {
+    if (err instanceof CompositeError) throw err;
     throw new CompositeError('Compositing request failed or timed out', null, null);
   } finally {
     clearTimeout(timer);

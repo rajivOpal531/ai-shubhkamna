@@ -7,12 +7,14 @@ import { Landing } from './steps/Landing';
 import { Tips } from './steps/Tips';
 import { Processing } from './steps/Processing';
 import { Preview } from './steps/Preview';
+import { Adjust } from './steps/Adjust';
 import { templates } from './data/templates';
 import { getProfile } from './services/profile';
 import { createPostByImageUrl, createPostWithFile } from './services/createPost';
+import { fetchCutout, compositeCutout, CompositeError } from './services/composite';
 import { redirectWithJwt } from './utils/redirect';
 import { config } from './config';
-import type { CompositeResult, Profile, Step } from './types';
+import type { CompositeResult, CutoutResult, Profile, Rect, Step } from './types';
 
 const EMPTY_PROFILE: Profile = {
   username: '',
@@ -38,8 +40,15 @@ function Flow() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [processedToast, setProcessedToast] = useState(false);
   const [overlapWarning, setOverlapWarning] = useState(false);
+  const [cutout, setCutout] = useState<CutoutResult | null>(null);
+  const [preparingAdjust, setPreparingAdjust] = useState(false);
+  const [adjustBusy, setAdjustBusy] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+
+  // The Adjust screen needs a real /cutout + /composite backend; hide it in the mock demo flow.
+  const adjustEnabled = !config.useMockComposite;
 
   // On a failed composite, Retake/Reupload should reopen the same source the photo came from.
   function repickPhoto() {
@@ -68,6 +77,54 @@ function Flow() {
     setPhoto(blob);
     setPhotoSource('capture');
     setStep('processing');
+  }
+
+  // From Preview: remove the background (once) and open the Adjust screen with the cutout.
+  async function handleStartAdjust() {
+    if (!photo || preparingAdjust) return;
+    setPreparingAdjust(true);
+    setPostError(null);
+    try {
+      const result = await fetchCutout({ photo, templateId, jwt });
+      setCutout(result);
+      setAdjustError(null);
+      setStep('adjust');
+    } catch (err) {
+      const failure = err instanceof CompositeError ? err : null;
+      setPostError(
+        failure?.code === 'no_face'
+          ? "We couldn't find a face in your photo."
+          : failure?.code === 'multiple_faces'
+            ? 'We found more than one person in the photo.'
+            : "We couldn't prepare your photo for adjusting. Please try again.",
+      );
+    } finally {
+      setPreparingAdjust(false);
+    }
+  }
+
+  // From Adjust: composite the cutout at the user's chosen box and return to Preview.
+  async function handleApplyAdjust(box: Rect) {
+    if (!cutout) return;
+    setAdjustBusy(true);
+    setAdjustError(null);
+    try {
+      const result = await compositeCutout({
+        cutout: cutout.blob,
+        box,
+        templateId,
+        profile: { ...profile, username: name },
+        jwt,
+      });
+      setComposited(result);
+      setOverlapWarning(result.warning === 'text-overlap');
+      setProcessedToast(false);
+      setStep('preview');
+    } catch {
+      setAdjustError("We couldn't apply your changes. Please try again.");
+    } finally {
+      setAdjustBusy(false);
+    }
   }
 
   async function handlePost() {
@@ -165,7 +222,22 @@ function Flow() {
           onDismissToast={() => setProcessedToast(false)}
           onBack={() => setStep('landing')}
           onRetake={repickPhoto}
+          onAdjust={adjustEnabled && photo ? handleStartAdjust : undefined}
+          adjusting={preparingAdjust}
           onPost={handlePost}
+        />
+      )}
+      {step === 'adjust' && cutout && (
+        <Adjust
+          template={selectedTemplate}
+          cutout={cutout}
+          busy={adjustBusy}
+          error={adjustError}
+          onCancel={() => {
+            setAdjustError(null);
+            setStep('preview');
+          }}
+          onApply={handleApplyAdjust}
         />
       )}
       {step === 'preview' && overlapWarning && (

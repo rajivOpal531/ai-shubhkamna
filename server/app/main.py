@@ -36,8 +36,10 @@ from .pipeline import (
     NoSubjectError,
     TextFields,
     compose,
+    compose_with_cutout,
+    remove_background,
 )
-from .placements import Placement, load_placements
+from .placements import CARD_SIZE, Box, Placement, load_placements
 from .profile import ProfileError, decrypt_profile, profile_from_claims
 from .remover import Remover, make_remover
 from .storage import LocalUploader, S3Uploader, UploadError, Uploader
@@ -134,6 +136,17 @@ def client_ip_key(request: Request) -> str:
     client = request.scope.get("client")
     host = client[0] if client else None
     return "ip:" + (host or get_remote_address(request))
+
+
+def _parse_box(raw: str, request_id: str) -> Box:
+    """Parse a 'x,y,w,h' placement box (card coordinates) from the adjust UI."""
+    try:
+        parts = [int(round(float(v))) for v in raw.split(",")]
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid box", headers={"X-Request-Id": request_id}) from exc
+    if len(parts) != 4 or parts[2] < 1 or parts[3] < 1:
+        raise HTTPException(status_code=422, detail="Invalid box", headers={"X-Request-Id": request_id})
+    return Box(parts[0], parts[1], parts[2], parts[3])
 
 
 async def _validate_request(
@@ -245,7 +258,7 @@ def create_app(
         allow_origins=settings.allowed_origins,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
-        expose_headers=["X-Request-Id", "X-Poster-Warning"],
+        expose_headers=["X-Request-Id", "X-Poster-Warning", "X-Photo-Box", "X-Card-Size", "X-Text-Box"],
     )
 
     @app.exception_handler(RequestValidationError)
@@ -340,7 +353,9 @@ def create_app(
     async def composite(
         request: Request,
         response: Response,
-        photo: UploadFile = File(...),
+        photo: UploadFile | None = File(None),
+        cutout: UploadFile | None = File(None),
+        box: str = Form(""),
         template: str = Form(...),
         name: str = Form(""),
         constituency: str = Form(""),
@@ -362,31 +377,50 @@ def create_app(
                 raise HTTPException(status_code=401, detail="Invalid token", headers=rid)
 
         fields = TextFields(name=name, constituency=constituency, state=state)
-        placement, data = await _validate_request(photo, template, fields, settings, placements, request_id)
-        if runtime.remover is None:
-            raise HTTPException(status_code=503, detail="Service starting", headers=rid)
+        placement = placements.get(template)
+        if placement is None:
+            raise HTTPException(status_code=400, detail=f"Unknown template '{template[:32]}'", headers=rid)
+        if any(len(v) > settings.max_field_chars for v in (fields.name, fields.constituency, fields.state)):
+            raise HTTPException(status_code=422, detail="Field too long", headers=rid)
         if settings.response_mode == "url" and runtime.uploader is None:
             raise HTTPException(status_code=503, detail="Service starting", headers=rid)
 
+        # Two ways in: a raw photo (background removed + auto-placed here) or a pre-made cutout from
+        # the "adjust photo" flow (already background-removed) placed at an explicit box.
+        adjusted = cutout is not None and bool(cutout.filename)
+        if adjusted:
+            place_box = _parse_box(box, request_id)
+            if cutout.content_type != "image/png":
+                raise HTTPException(status_code=415, detail="Cutout must be a PNG", headers=rid)
+            data = await cutout.read(settings.max_upload_bytes + 1)
+            if len(data) > settings.max_upload_bytes:
+                megabytes = settings.max_upload_bytes // (1024 * 1024)
+                raise HTTPException(status_code=413, detail=f"Cutout larger than {megabytes} MB", headers=rid)
+            work = functools.partial(compose_with_cutout, data, placement, fields, place_box)
+        else:
+            if photo is None or not photo.filename:
+                raise HTTPException(status_code=422, detail="Missing photo", headers=rid)
+            if runtime.remover is None:
+                raise HTTPException(status_code=503, detail="Service starting", headers=rid)
+            _, data = await _validate_request(photo, template, fields, settings, placements, request_id)
+            work = functools.partial(
+                compose, data, placement, fields, runtime.remover, face_detector=runtime.face_detector
+            )
+
         log.info(
-            "composite req=%s template=%s jwt=%s bytes=%d",
+            "composite req=%s template=%s adjusted=%s jwt=%s bytes=%d",
             request_id,
             template,
+            adjusted,
             hashlib.sha256(token.encode()).hexdigest()[:12],
             len(data),
         )
-        # Approximate ceiling: this read and the acquire below are not atomic, so a burst can
-        # push the queue slightly past the bound before the next request sees it.
         if composite_limiter.statistics().tasks_waiting >= settings.max_concurrent_composites * QUEUE_FACTOR:
             raise HTTPException(status_code=503, detail="Busy, retry shortly", headers=rid)
 
         try:
             async with composite_limiter:
-                rendered = await run_in_threadpool(
-                    functools.partial(
-                        compose, data, placement, fields, runtime.remover, face_detector=runtime.face_detector
-                    )
-                )
+                rendered = await run_in_threadpool(work)
             warning = "text-overlap" if rendered.text_overlap else ""
             if settings.response_mode == "image":
                 headers = {"X-Request-Id": request_id}
@@ -416,5 +450,77 @@ def create_app(
         if warning:
             response.headers["X-Poster-Warning"] = warning
         return {"imageUrl": url, "warning": warning or None}
+
+    # Step one of the "adjust photo" flow: background-remove the upload and hand the transparent
+    # cutout back to the client, which lets the user scale/drag it before calling /composite with
+    # the resulting box. Same two-limit shape as /composite.
+    @app.post("/cutout")
+    @limiter.limit(f"{settings.rate_limit_per_minute}/minute")  # per bearer token (rate_limit_key)
+    @limiter.limit(f"{settings.rate_limit_per_ip_per_minute}/minute", key_func=client_ip_key)  # per source IP
+    async def cutout(
+        request: Request,
+        photo: UploadFile = File(...),
+        template: str = Form(...),
+        authorization: str = Header(""),
+    ) -> Any:
+        request_id = uuid.uuid4().hex[:8]
+        rid = {"X-Request-Id": request_id}
+
+        token = _bearer(authorization)
+        if not token:
+            raise HTTPException(status_code=401, detail="Missing bearer token", headers=rid)
+        if token_validator is not None:
+            try:
+                accepted = await token_validator(token)
+            except TokenValidatorUnavailable as exc:
+                raise HTTPException(503, "Token check unavailable, retry shortly", headers=rid) from exc
+            if not accepted:
+                raise HTTPException(status_code=401, detail="Invalid token", headers=rid)
+
+        placement, data = await _validate_request(photo, template, TextFields(), settings, placements, request_id)
+        if runtime.remover is None:
+            raise HTTPException(status_code=503, detail="Service starting", headers=rid)
+
+        log.info(
+            "cutout req=%s template=%s jwt=%s bytes=%d",
+            request_id,
+            template,
+            hashlib.sha256(token.encode()).hexdigest()[:12],
+            len(data),
+        )
+        if composite_limiter.statistics().tasks_waiting >= settings.max_concurrent_composites * QUEUE_FACTOR:
+            raise HTTPException(status_code=503, detail="Busy, retry shortly", headers=rid)
+
+        try:
+            async with composite_limiter:
+                png, close_up = await run_in_threadpool(
+                    functools.partial(remove_background, data, runtime.remover, face_detector=runtime.face_detector)
+                )
+        except BadImageError as exc:
+            raise HTTPException(status_code=415, detail=str(exc), headers=rid) from exc
+        except NoFaceError as exc:
+            raise HTTPException(status_code=422, detail="no_face", headers=rid) from exc
+        except MultipleFacesError as exc:
+            raise HTTPException(status_code=422, detail="multiple_faces", headers=rid) from exc
+        except NoSubjectError as exc:
+            raise HTTPException(status_code=422, detail="no_subject", headers=rid) from exc
+        except HTTPException:
+            raise
+        except Exception:
+            log.exception("cutout req=%s failed", request_id)
+            raise HTTPException(500, f"Internal error (req {request_id})", headers=rid) from None
+
+        pb = placement.photo_box
+        tb = placement.text_box
+        headers = {
+            "X-Request-Id": request_id,
+            # Card + placement geometry so the adjust UI can position the cutout in card coordinates.
+            "X-Card-Size": f"{CARD_SIZE[0]},{CARD_SIZE[1]}",
+            "X-Photo-Box": f"{pb.x},{pb.y},{pb.w},{pb.h}",
+            "X-Text-Box": f"{tb.x},{tb.y},{tb.w},{tb.h}",
+        }
+        if close_up:
+            headers["X-Poster-Warning"] = "text-overlap"
+        return Response(content=png, media_type="image/png", headers=headers)
 
     return app

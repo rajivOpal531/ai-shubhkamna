@@ -333,3 +333,57 @@ def compose(
     buffer = io.BytesIO()
     card.save(buffer, "JPEG", quality=90, subsampling=0, optimize=True)
     return Rendered(jpeg=buffer.getvalue(), text_overlap=text_overlap)
+
+
+def remove_background(
+    photo_bytes: bytes,
+    remover: Remover,
+    face_detector: FaceDetector | None = None,
+) -> tuple[bytes, bool]:
+    """Decode + (optional) face-check + background removal, cropped to the subject.
+
+    Returns the cutout as PNG bytes (transparent background) and whether the face is a close-up
+    (a hint the Adjust UI can surface). Used by the "adjust photo" flow, which composites later.
+    """
+    photo = decode_photo(photo_bytes)
+    close_up = False
+    if face_detector is not None:
+        faces = face_detector(photo)
+        if len(faces) == 0:
+            raise NoFaceError("No face detected in photo")
+        if len(faces) > 1:
+            raise MultipleFacesError(f"{len(faces)} faces detected in photo")
+        close_up = max(w * h for _, _, w, h in faces) > FACE_MAX_AREA_RATIO
+    cutout = crop_to_subject(remover(photo))
+    buffer = io.BytesIO()
+    cutout.save(buffer, "PNG")
+    return buffer.getvalue(), close_up
+
+
+def compose_with_cutout(
+    cutout_bytes: bytes,
+    placement: Placement,
+    fields: TextFields,
+    box: Box,
+    font_path: Path = FONT_PATH,
+) -> Rendered:
+    """Composite an already-background-removed cutout at an explicit `box` (card coordinates), for
+    the user-adjusted flow. No background removal here -- the caller supplies the cutout and where
+    it goes. The caption is still masked out of the person and drawn last.
+    """
+    cutout = Image.open(io.BytesIO(cutout_bytes)).convert("RGBA")
+    with Image.open(placement.template_path) as template:
+        card = template.convert("RGB")
+    # Clamp the requested box to the card so a bad transform can never paste out of bounds.
+    x = max(0, min(box.x, card.width - 1))
+    y = max(0, min(box.y, card.height - 1))
+    w = max(1, min(box.w, card.width - x))
+    h = max(1, min(box.h, card.height - y))
+    cutout = cutout.resize((w, h), Image.LANCZOS)
+    text_overlap = _opaque_in_text_box(cutout, x, y, placement.text_box)
+    _mask_out_text_box(cutout, x, y, placement.text_box)
+    card.paste(cutout, (x, y), cutout)
+    draw_text_block(card, placement, fields, font_path)
+    buffer = io.BytesIO()
+    card.save(buffer, "JPEG", quality=90, subsampling=0, optimize=True)
+    return Rendered(jpeg=buffer.getvalue(), text_overlap=text_overlap)

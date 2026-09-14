@@ -425,7 +425,10 @@ def compose_with_cutout(
     the user-adjusted flow. No background removal here -- the caller supplies the cutout and where
     it goes. The caption is still masked out of the person and drawn last.
     """
-    cutout = Image.open(io.BytesIO(cutout_bytes)).convert("RGBA")
+    try:
+        cutout = Image.open(io.BytesIO(cutout_bytes)).convert("RGBA")
+    except Exception as exc:  # not a decodable image -> 415, not a 500
+        raise BadImageError("Could not decode cutout") from exc
     with Image.open(placement.template_path) as template:
         card = template.convert("RGB")
     # Resize to the exact size the user chose (preserving its aspect ratio); the box may run past the

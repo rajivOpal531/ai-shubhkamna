@@ -162,8 +162,10 @@ async def _validate_request(
     placement = placements.get(template)
     if placement is None:
         raise HTTPException(status_code=400, detail=f"Unknown template '{template[:32]}'", headers=headers)
-    if photo.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(status_code=415, detail="Unsupported image type", headers=headers)
+    # NB: do NOT gate on photo.content_type -- native app webview pickers routinely upload a valid
+    # photo as "application/octet-stream" (or blank), which this allowlist would reject with 415 even
+    # though the bytes are a fine JPEG/PNG/HEIC. decode_photo() is the real validator (it raises
+    # BadImageError -> 415 for anything it cannot decode), so let the bytes through and let it decide.
     # Belt and braces: BodyLimitMiddleware already capped the whole body further upstream.
     data = await photo.read(settings.max_upload_bytes + 1)
     if len(data) > settings.max_upload_bytes:
@@ -390,8 +392,8 @@ def create_app(
         adjusted = cutout is not None and bool(cutout.filename)
         if adjusted:
             place_box = _parse_box(box, request_id)
-            if cutout.content_type != "image/png":
-                raise HTTPException(status_code=415, detail="Cutout must be a PNG", headers=rid)
+            # Don't gate on content_type (webviews may send octet-stream); compose_with_cutout opens
+            # the bytes and raises if they aren't a valid image.
             data = await cutout.read(settings.max_upload_bytes + 1)
             if len(data) > settings.max_upload_bytes:
                 megabytes = settings.max_upload_bytes // (1024 * 1024)

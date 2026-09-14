@@ -87,11 +87,13 @@ def test_adjusted_composite_rejects_bad_box(client):
     assert _composite_cutout(client, png, box="10,10,0,100").status_code == 422
 
 
-def test_adjusted_composite_rejects_non_png_cutout(client):
+def test_adjusted_composite_rejects_undecodable_cutout(client):
+    # We no longer gate on content-type (webviews send generic types); a genuinely undecodable
+    # cutout is still rejected because compose_with_cutout can't open it.
     response = client.post(
         "/composite",
         data={"template": "card-2", "box": "10,10,400,600"},
-        files={"cutout": ("cut.jpg", make_photo_bytes(), "image/jpeg")},
+        files={"cutout": ("cut.png", b"not an image at all", "image/png")},
         headers=AUTH,
     )
     assert response.status_code == 415

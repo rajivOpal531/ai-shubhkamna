@@ -417,22 +417,18 @@ def test_compose_never_covers_baked_text_keepouts(photo_bytes):
             assert diff.getbbox() is None, (placement.template_id, i, kb)
 
 
-def test_compose_flags_text_overlap_for_a_close_up_face(photo_bytes):
-    # The photo is now confined clear of every text box, so a full-frame cutout does NOT raise the
-    # warning; the warning instead signals a close-up face (too big to be an "upper body" shot).
-    placement = load_placements()["card-2"]
-    close_up = lambda img: [(0.15, 0.1, 0.6, 0.7)]  # one face at 42% of the frame (> FACE_MAX_AREA_RATIO)
-    assert compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=close_up).text_overlap is True
-
-
-def test_compose_confines_photo_clear_of_text_so_no_warning(photo_bytes):
+def test_compose_never_emits_the_improve_poster_warning(photo_bytes):
+    # The compositor now always places the photo cleanly (confined clear of text, grown to fill the
+    # space), so the "your poster can be improved" warning is retired -- it never fires, not even for a
+    # big close-up face or a full-frame opaque cutout.
     def full_opaque_remover(img: Image.Image) -> Image.Image:
         rgba = img.convert("RGBA")
         rgba.putalpha(Image.new("L", img.size, 255))
         return rgba
 
-    # A full-frame opaque cutout is shifted clear of the caption/title/message, so no overlap warning.
     placement = load_placements()["card-2"]
+    big_face = lambda img: [(0.15, 0.1, 0.6, 0.7)]  # face at 42% of the frame
+    assert compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=big_face).text_overlap is False
     assert compose(photo_bytes, placement, TextFields(), full_opaque_remover).text_overlap is False
 
 
@@ -502,11 +498,16 @@ def test_compose_returns_rendered_with_overlap_flag(photo_bytes):
     assert isinstance(out.text_overlap, bool)
 
 
-def test_compose_flags_overlap_for_a_close_up_face(photo_bytes):
+def test_compose_grows_photo_into_clear_space_above_it(photo_bytes):
+    # With empty space above the photo column, the photo is grown up (bottom-anchored) so it fills the
+    # room instead of sitting small -- its top ends up well above the design photo box's top.
     placement = load_placements()["card-1"]
-    # a single face filling ~42% of the frame -> extreme close-up -> poster warning
-    big_face = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: [(0.15, 0.1, 0.6, 0.7)])
-    assert big_face.text_overlap is True
-    # a small face (upper-body framing) -> no warning
-    small_face = compose(photo_bytes, placement, TextFields(), fake_remover, face_detector=lambda img: [(0.4, 0.1, 0.1, 0.1)])
-    assert small_face.text_overlap is False
+    from app.pipeline import clear_of_all_text, grow_up_into_clear_space
+
+    protected = (placement.text_box, *placement.text_keepout)
+    clear = clear_of_all_text(placement.photo_box, protected)
+    grown = grow_up_into_clear_space(clear, protected)
+    assert grown.y < clear.y  # grew upward
+    assert grown.bottom == clear.bottom  # stayed bottom-anchored
+    for tb in protected:  # still clear of every text box
+        assert not (tb.right > grown.x and tb.x < grown.right and tb.bottom > grown.y and tb.y < grown.bottom)

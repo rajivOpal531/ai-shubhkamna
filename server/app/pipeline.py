@@ -280,6 +280,24 @@ def clear_of_all_text(photo_box: Box, boxes: tuple[Box, ...]) -> Box:
     return box
 
 
+# Grow the photo up to this y (keeping clear of the top border artwork) when the space above it is free.
+GROW_TOP_MARGIN = 180
+
+
+def grow_up_into_clear_space(box: Box, boxes: tuple[Box, ...], top_margin: int = GROW_TOP_MARGIN) -> Box:
+    """Extend `box` upward (staying bottom-anchored) into empty vertical space in its own column, so the
+    photo fills the available room instead of sitting small with whitespace beside the text. Stops just
+    below any text that sits in the box's horizontal span."""
+    top = top_margin
+    for tb in boxes:
+        in_column = tb.right > box.x and tb.x < box.right
+        above = tb.bottom <= box.y
+        if in_column and above:
+            top = max(top, tb.bottom + TEXT_CLEAR_MARGIN)
+    new_top = min(box.y, top)
+    return Box(box.x, new_top, box.w, box.bottom - new_top)
+
+
 def _mask_out_text_box(cutout: Image.Image, x: int, y: int, text_box: Box) -> None:
     """Zero the alpha of any cutout pixels that fall inside `text_box` (with a margin), so the person
     can never be drawn over the caption even if the fitted box still slightly intersects it."""
@@ -341,37 +359,30 @@ def compose(
     so a bad photo is rejected fast with a specific message.
     """
     photo = decode_photo(photo_bytes)
-    face_close_up = False
     if face_detector is not None:
         faces = face_detector(photo)
         if len(faces) == 0:
             raise NoFaceError("No face detected in photo")
         if len(faces) > 1:
             raise MultipleFacesError(f"{len(faces)} faces detected in photo")
-        # (x, y, w, h) are already normalised to the image, so w*h is the face's area fraction.
-        face_close_up = max(w * h for _, _, w, h in faces) > FACE_MAX_AREA_RATIO
     cutout = crop_to_subject(remover(photo))
     with Image.open(placement.template_path) as template:
         card = template.convert("RGB")
-    # Fit the person into the part of the photo box that is clear of the caption, then mask any pixels
-    # that still reach into the caption. The photo never covers the text; the caption is drawn last.
-    # Confine the photo to the region clear of the caption AND the baked title/message. Fitting into
-    # that region keeps the cutout solid and opaque (no holes) while never covering any text; the
-    # person may still overlap the template artwork, which is fine.
+    # Confine the photo to the region clear of the caption AND the baked title/message, then grow it up
+    # into the empty space in that column so it fills the available room rather than sitting small with
+    # whitespace. Fitting keeps the cutout solid and opaque; masking is a safety net so text is never
+    # covered even if a box could not be fully cleared. The photo may overlap template artwork -- fine.
     protected = (placement.text_box, *placement.text_keepout)
-    clear_box = clear_of_all_text(placement.photo_box, protected)
+    clear_box = grow_up_into_clear_space(clear_of_all_text(placement.photo_box, protected), protected)
     fitted = fit_bottom_center(cutout.size, clear_box)
     cutout = cutout.resize((fitted.w, fitted.h), Image.LANCZOS)
-    # Detect any overlap before masking so we can warn the user; the mask is a safety net for the rare
-    # case where there was no room to shift the photo fully clear of a text box.
-    text_overlap = face_close_up or any(_opaque_in_text_box(cutout, fitted.x, fitted.y, b) for b in protected)
     for b in protected:
         _mask_out_text_box(cutout, fitted.x, fitted.y, b)
     card.paste(cutout, (fitted.x, fitted.y), cutout)
     draw_text_block(card, placement, fields, font_path)
     buffer = io.BytesIO()
     card.save(buffer, "JPEG", quality=90, subsampling=0, optimize=True)
-    return Rendered(jpeg=buffer.getvalue(), text_overlap=text_overlap)
+    return Rendered(jpeg=buffer.getvalue(), text_overlap=False)
 
 
 def remove_background(
@@ -420,11 +431,10 @@ def compose_with_cutout(
     w, h = max(1, round(box.w)), max(1, round(box.h))
     cutout = cutout.resize((w, h), Image.LANCZOS)
     protected = (placement.text_box, *placement.text_keepout)
-    text_overlap = any(_opaque_in_text_box(cutout, x, y, b) for b in protected)
     for b in protected:
         _mask_out_text_box(cutout, x, y, b)
     _paste_clipped(card, cutout, x, y)
     draw_text_block(card, placement, fields, font_path)
     buffer = io.BytesIO()
     card.save(buffer, "JPEG", quality=90, subsampling=0, optimize=True)
-    return Rendered(jpeg=buffer.getvalue(), text_overlap=text_overlap)
+    return Rendered(jpeg=buffer.getvalue(), text_overlap=False)

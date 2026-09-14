@@ -1,0 +1,2 @@
+# deploy.sh runs on Linux hosts; keep LF even when committed from Windows.
+*.sh text eol=lf

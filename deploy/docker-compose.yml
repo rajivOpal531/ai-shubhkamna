@@ -1,0 +1,31 @@
+# Production stack on the EC2 origin (CloudFront -> Caddy :80 -> api:8000). Run via deploy.sh.
+# The project name stays "deploy" so the containers and volumes of the original ~/deploy setup are
+# reused when switching to this directory.
+name: deploy
+
+services:
+  api:
+    build: ../server
+    env_file: ./api.env
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+    environment:
+      SERVER_NAME: ${SERVER_NAME:-ec2}
+    volumes:
+      # Mount the directory, not the file: git pull replaces the Caddyfile (new inode), which a
+      # single-file bind mount never sees; with a directory mount `caddy reload` picks it up.
+      - ./caddy:/etc/caddy:ro
+      - ../dist:/srv/www:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

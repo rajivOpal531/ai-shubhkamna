@@ -1,0 +1,36 @@
+# Caddy on the EC2 origin, behind CloudFront. CloudFront terminates HTTPS and runs the WAF, so this
+# serves plain HTTP on :80; the security group admits only CloudFront's origin-facing prefix list.
+{
+	auto_https off
+}
+
+:80 {
+	encode zstd gzip
+
+	# Which EC2 answered (set SERVER_NAME in deploy/.env, e.g. "mumbai"); handy during migrations.
+	header X-Served-By {$SERVER_NAME:ec2}
+
+	request_body {
+		max_size 11MB
+	}
+
+	# Every backend route must be listed here, or the request falls through to the SPA below.
+	@api path /composite /cutout /profile /health
+	handle @api {
+		reverse_proxy api:8000 {
+			# The backend's per-IP rate limit reads the rightmost X-Forwarded-For entry. Replace the
+			# header with the viewer IP CloudFront reports, instead of appending CloudFront's edge IP.
+			header_up X-Forwarded-For {http.request.header.CloudFront-Viewer-Address}
+		}
+	}
+
+	handle {
+		root * /srv/www
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		@page not path /assets/*
+		header @page Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

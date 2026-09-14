@@ -11,6 +11,61 @@ The backend needs ~2 GB RAM (it loads an ML model) and must be served over **HTT
 
 ---
 
+## Current setup: EC2 + Caddy behind CloudFront
+
+This is what runs `shubhkamnauat.narendramodi.in` today. The App Runner / S3 sections further down
+are the original plan, kept for reference.
+
+```
+Browser ──HTTPS──► CloudFront (+ WAF) ──HTTP :80──► EC2: Caddy ─┬─ /composite /cutout /profile /health ─► api container (:8000)
+                                                               └─ everything else ─► dist/ (frontend build)
+```
+
+- **One EC2 host** (`ap-south-1`) runs `deploy/docker-compose.yml`: `api`, built from `server/`, and
+  `caddy`, which serves `dist/` and proxies the API routes using `deploy/caddy/Caddyfile`.
+- **CloudFront** has a single origin, the EC2 public DNS name (HTTP only, port 80). The default
+  behavior allows all methods, uses **CachingDisabled**, and an origin request policy with all viewer
+  headers plus the **`CloudFront-Viewer-Address`** header (Caddy forwards it so per-IP rate limiting
+  sees the real user).
+- **WAF** (CloudFront core protections): in `AWSManagedRulesCommonRuleSet`, rule
+  **`SizeRestrictions_BODY` is overridden to Count**. Otherwise every photo upload over 8 KB is
+  blocked with a CloudFront 403.
+- **Security group**: port 80 only from the managed prefix list
+  `com.amazonaws.global.cloudfront.origin-facing`; port 22 only from the admin IP. No 443.
+
+### One-time host setup
+
+Needs only Docker with the compose plugin; the frontend is built inside `node:20-alpine`.
+
+```bash
+git clone https://github.com/rajivOpal531/ai-shubhkamna ~/ai-shubhkamna
+cd ~/ai-shubhkamna/deploy
+cp ../server/.env.example api.env && chmod 600 api.env   # fill in the secrets (see server/README.md)
+echo "SERVER_NAME=mumbai" > .env                          # optional: sent back as the X-Served-By header
+./deploy.sh all
+```
+
+`api.env` and `.env` are gitignored; never commit them.
+
+### Deploying a change
+
+```bash
+~/ai-shubhkamna/deploy/deploy.sh ui    # frontend only (src/, public/, index.html)
+~/ai-shubhkamna/deploy/deploy.sh api   # backend only (server/)
+~/ai-shubhkamna/deploy/deploy.sh       # both
+```
+
+The script pulls `master`, builds what changed, restarts containers whose config changed, reloads
+Caddy without downtime, and waits for `/health`.
+
+### Adding a backend route
+
+Add the path to the `@api path` line in `deploy/caddy/Caddyfile` in the same change. A route missing
+from that line never reaches the API: Caddy answers it with the frontend (`index.html`, or a 405 for
+POST).
+
+---
+
 ## Recommended architecture (simplest, no CORS)
 
 One CloudFront distribution on the site domain (`shubhkamnauat.narendramodi.in`) with **two origins**:

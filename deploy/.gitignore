@@ -1,0 +1,3 @@
+# Host-only files: backend secrets and per-host compose variables (SERVER_NAME).
+api.env
+.env

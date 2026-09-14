@@ -112,6 +112,28 @@ describe('compositePhoto', () => {
     expect((error as CompositeError).message).toContain('empty');
   });
 
+  it('rejects a 200 HTML page (a CDN masking an origin error) instead of returning it as the card', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (key: string) =>
+            key.toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : key === 'X-Request-Id' ? 'req-html' : null,
+        },
+        blob: async () => new Blob(['<!doctype html><html></html>'], { type: 'text/html' }),
+      }),
+    );
+
+    await expect(compositePhoto(PARAMS, { useMock: false })).rejects.toMatchObject({
+      name: 'CompositeError',
+      status: 200,
+      requestId: 'req-html',
+      retryable: true,
+    });
+  });
+
   it('throws a CompositeError with status and request id when the compositing endpoint responds with a non-ok status', async () => {
     vi.stubGlobal(
       'fetch',

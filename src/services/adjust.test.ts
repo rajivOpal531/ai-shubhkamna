@@ -90,6 +90,27 @@ describe('fetchCutout', () => {
     ).rejects.toMatchObject({ status: 422, code: 'no_face' });
   });
 
+  it('rejects a 200 that is not an image even when the geometry headers are present', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        fakeResponse({
+          headers: {
+            'content-type': 'text/html; charset=utf-8',
+            'X-Card-Size': '1080,1260',
+            'X-Photo-Box': '540,120,480,1000',
+            'X-Text-Box': '60,900,420,220',
+            'X-Request-Id': 'req-html',
+          },
+          blob: new Blob(['<!doctype html><html></html>'], { type: 'text/html' }),
+        }),
+      ),
+    );
+    await expect(
+      fetchCutout({ photo: new Blob(['x']), templateId: 'card-2', jwt: 'j' }),
+    ).rejects.toMatchObject({ name: 'CompositeError', status: 200, requestId: 'req-html', retryable: true });
+  });
+
   it('throws when a geometry header is missing', async () => {
     vi.stubGlobal(
       'fetch',
@@ -150,5 +171,28 @@ describe('compositeCutout', () => {
     });
     expect(result.imageBlob).toBeInstanceOf(Blob);
     expect(result.imageUrl).toBeUndefined();
+  });
+
+  // A CDN/proxy can mask an origin error as a 200 HTML page (CloudFront serving index.html). Returning
+  // that as imageBlob renders a broken <img> in Preview after "Adjust photo"; it must be a retryable error.
+  it.each([
+    { name: 'an HTML page', contentType: 'text/html; charset=utf-8', body: '<!doctype html><html></html>' },
+    { name: 'no content-type', contentType: '', body: 'mystery bytes' },
+  ])('rejects a 200 response carrying $name instead of returning it as the card', async ({ contentType, body }) => {
+    const headers: Record<string, string> = { 'X-Request-Id': 'req-html' };
+    if (contentType) headers['content-type'] = contentType;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(fakeResponse({ headers, blob: new Blob([body], { type: contentType }) })),
+    );
+    await expect(
+      compositeCutout({
+        cutout: new Blob(['png'], { type: 'image/png' }),
+        box: { x: 0, y: 0, w: 100, h: 100 },
+        templateId: 'card-2',
+        profile: PROFILE,
+        jwt: 'j',
+      }),
+    ).rejects.toMatchObject({ name: 'CompositeError', status: 200, requestId: 'req-html', retryable: true });
   });
 });

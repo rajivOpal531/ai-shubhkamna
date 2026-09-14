@@ -52,6 +52,21 @@ export class CompositeError extends Error {
   }
 }
 
+// Read the image bytes of a successful response. A 200 that isn't an image means a proxy/CDN masked an
+// origin error as its SPA/HTML page (CloudFront serves index.html on origin errors); handing that to an
+// <img> shows a broken card, so it becomes a retryable CompositeError instead.
+async function readImageBody(response: Response, label: string): Promise<Blob> {
+  const requestId = response.headers.get('X-Request-Id');
+  if (!(response.headers.get('content-type') ?? '').includes('image/')) {
+    throw new CompositeError(`${label} service returned an unexpected response`, response.status, requestId);
+  }
+  const blob = await response.blob();
+  if (!blob.size) {
+    throw new CompositeError(`${label} response was empty`, response.status, requestId);
+  }
+  return blob;
+}
+
 // Real endpoint: server/README.md ("API"). Multipart fields + bearer header; returns { imageUrl }.
 export async function compositePhoto(
   params: CompositeParams,
@@ -130,23 +145,7 @@ async function realCompositePhoto({
       return { imageUrl: data.imageUrl, warning: response.headers.get('X-Poster-Warning') };
     }
 
-    // A 200 that isn't an image means a proxy/CDN masked an origin error as its SPA/HTML page (seen
-    // when CloudFront serves index.html on origin errors). Treat it as a failure, never as a card.
-    if (!contentType.includes('image/')) {
-      throw new CompositeError(
-        'Compositing service returned an unexpected response',
-        response.status,
-        response.headers.get('X-Request-Id'),
-      );
-    }
-    const blob = await response.blob();
-    if (!blob.size) {
-      throw new CompositeError(
-        'Compositing response was empty',
-        response.status,
-        response.headers.get('X-Request-Id'),
-      );
-    }
+    const blob = await readImageBody(response, 'Compositing');
     return { imageBlob: blob, warning: response.headers.get('X-Poster-Warning') };
   } catch (err) {
     if (err instanceof CompositeError) throw err;
@@ -219,9 +218,9 @@ export async function fetchCutout({ photo, templateId, jwt, signal }: FetchCutou
     const cardParts = (response.headers.get('X-Card-Size') ?? '').split(',').map(Number);
     const photoBox = parseRect(response.headers.get('X-Photo-Box'));
     const textBox = parseRect(response.headers.get('X-Text-Box'));
-    const blob = await response.blob();
+    const blob = await readImageBody(response, 'Cutout');
     const cardValid = cardParts.length === 2 && cardParts.every((n) => Number.isFinite(n) && n > 0);
-    if (!blob.size || !photoBox || !textBox || !cardValid) {
+    if (!photoBox || !textBox || !cardValid) {
       throw new CompositeError('Cutout response was incomplete', response.status, response.headers.get('X-Request-Id'));
     }
     return {
@@ -313,10 +312,7 @@ export async function compositeCutout({
       return { imageUrl: data.imageUrl, warning: response.headers.get('X-Poster-Warning') };
     }
 
-    const blob = await response.blob();
-    if (!blob.size) {
-      throw new CompositeError('Compositing response was empty', response.status, response.headers.get('X-Request-Id'));
-    }
+    const blob = await readImageBody(response, 'Compositing');
     return { imageBlob: blob, warning: response.headers.get('X-Poster-Warning') };
   } catch (err) {
     if (err instanceof CompositeError) throw err;

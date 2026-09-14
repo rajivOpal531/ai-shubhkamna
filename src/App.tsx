@@ -170,12 +170,13 @@ function Flow() {
       {step === 'tips' && (
         <Tips onProceed={() => cameraInputRef.current?.click()} onBack={() => setStep('landing')} />
       )}
-      {/* Native camera: `capture` opens the device camera directly on iOS and Android. */}
+      {/* Camera path: no `capture` attribute. Android WebViews (the NaMo app) often don't honour
+          `capture`, leaving the user stuck; without it the same picker the gallery uses opens, from
+          which the user can choose Camera. Mobile browsers still show a camera option too. */}
       <input
         ref={cameraInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         hidden
         data-testid="camera-input"
         onChange={(event) => {

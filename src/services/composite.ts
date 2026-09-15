@@ -249,6 +249,41 @@ type CompositeCutoutParams = {
   signal?: AbortSignal;
 };
 
+// The /cutout PNG comes back at full processing resolution (up to ~2000px, several MB as lossless
+// RGBA). The backend re-scales it to the chosen box anyway, and an oversized multipart body can be
+// rejected by a CDN/WAF/tunnel in front of the API (a 403 with no request id, unlike our own errors).
+// Shrinking it to card scale keeps transparency, cuts the upload to a fraction, and loses no visible
+// quality. Best-effort: any failure returns the original blob so compositing still proceeds.
+const CUTOUT_MAX_SIDE = 1080;
+
+async function shrinkCutoutPng(blob: Blob, maxSide: number = CUTOUT_MAX_SIDE): Promise<Blob> {
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return blob;
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(blob);
+  } catch {
+    return blob;
+  }
+  try {
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    if (scale >= 1) return blob; // already small enough
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return blob;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    return out ?? blob;
+  } catch {
+    return blob;
+  } finally {
+    bitmap.close?.();
+  }
+}
+
 // POST /composite with a pre-made cutout + explicit box (the user-adjusted placement). Shares the
 // response handling shape with realCompositePhoto: JSON { imageUrl } in url mode, JPEG bytes otherwise.
 export async function compositeCutout({
@@ -263,9 +298,11 @@ export async function compositeCutout({
     throw new CompositeError('VITE_COMPOSITE_URL is not configured', null, null, 'config');
   }
 
+  const cutoutToSend = await shrinkCutoutPng(cutout);
+
   const form = new FormData();
   form.append('template', templateId);
-  form.append('cutout', cutout, 'cutout.png');
+  form.append('cutout', cutoutToSend, 'cutout.png');
   form.append('box', `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.w)},${Math.round(box.h)}`);
   form.append('name', profile.username);
   form.append('constituency', profile.constituency);

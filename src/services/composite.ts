@@ -250,35 +250,41 @@ type CompositeCutoutParams = {
 };
 
 // The /cutout PNG comes back at full processing resolution (up to ~2000px, several MB as lossless
-// RGBA). The backend re-scales it to the chosen box anyway, and an oversized multipart body can be
-// rejected by a CDN/WAF/tunnel in front of the API (a 403 with no request id, unlike our own errors).
-// Shrinking it to card scale keeps transparency, cuts the upload to a fraction, and loses no visible
-// quality. Best-effort: any failure returns the original blob so compositing still proceeds.
+// RGBA). A body that large gets rejected by a CDN/WAF/tunnel in front of the API (a 403 with no
+// request id, unlike our own errors), while the small JPEG the camera path posts sails through. So
+// re-encode the cutout to WebP -- it keeps the alpha channel the compositor needs but is a fraction
+// of PNG's size -- at card scale. The backend decodes by content, not extension, so WebP is fine.
+// Best-effort: any failure (no canvas / WebP unsupported) falls back to PNG, then to the original.
 const CUTOUT_MAX_SIDE = 1080;
 
-async function shrinkCutoutPng(blob: Blob, maxSide: number = CUTOUT_MAX_SIDE): Promise<Blob> {
-  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return blob;
+async function shrinkCutout(
+  blob: Blob,
+  maxSide: number = CUTOUT_MAX_SIDE,
+): Promise<{ blob: Blob; filename: string }> {
+  const asPng = { blob, filename: 'cutout.png' };
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return asPng;
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(blob);
   } catch {
-    return blob;
+    return asPng;
   }
   try {
     const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    if (scale >= 1) return blob; // already small enough
     const w = Math.max(1, Math.round(bitmap.width * scale));
     const h = Math.max(1, Math.round(bitmap.height * scale));
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return blob;
+    if (!ctx) return asPng;
     ctx.drawImage(bitmap, 0, 0, w, h);
-    const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-    return out ?? blob;
+    const webp = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.85));
+    if (webp && webp.type === 'image/webp' && webp.size > 0) return { blob: webp, filename: 'cutout.webp' };
+    const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    return png ? { blob: png, filename: 'cutout.png' } : asPng;
   } catch {
-    return blob;
+    return asPng;
   } finally {
     bitmap.close?.();
   }
@@ -298,11 +304,11 @@ export async function compositeCutout({
     throw new CompositeError('VITE_COMPOSITE_URL is not configured', null, null, 'config');
   }
 
-  const cutoutToSend = await shrinkCutoutPng(cutout);
+  const cutoutToSend = await shrinkCutout(cutout);
 
   const form = new FormData();
   form.append('template', templateId);
-  form.append('cutout', cutoutToSend, 'cutout.png');
+  form.append('cutout', cutoutToSend.blob, cutoutToSend.filename);
   form.append('box', `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.w)},${Math.round(box.h)}`);
   form.append('name', profile.username);
   form.append('constituency', profile.constituency);

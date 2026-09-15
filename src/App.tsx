@@ -15,6 +15,7 @@ import { fetchCutout, compositeCutout, CompositeError } from './services/composi
 import { downscaleImage } from './utils/downscaleImage';
 import { redirectWithJwt } from './utils/redirect';
 import { isNativeApp, openCamera, openGallery, NativeMediaError } from './services/nativeBridge';
+import { logAnalytics, ANALYTICS_PAGES, type TrackFn } from './services/analytics';
 import { isAndroidWebView } from './utils/userAgent';
 import { config } from './config';
 import type { CompositeResult, CutoutResult, Profile, Rect, Step } from './types';
@@ -59,6 +60,21 @@ function Flow() {
   // plain browser this is false and the hidden <input type="file"> below is used instead.
   const nativeApp = isNativeApp();
 
+  // Page-bound analytics loggers, each carrying the current JWT + profile context. Fire-and-forget.
+  const pageloadLogged = useRef(false);
+  const makeTrack = (page: string): TrackFn => (action, extras) =>
+    logAnalytics(page, action, { jwt, state: profile.state, constituency: profile.constituency }, extras);
+  const trackLanding = makeTrack(ANALYTICS_PAGES.landing);
+  const trackInstruction = makeTrack(ANALYTICS_PAGES.instruction);
+  const trackPreview = makeTrack(ANALYTICS_PAGES.preview);
+  const trackInspire = makeTrack(ANALYTICS_PAGES.inspire);
+
+  // The API records frame choice as "Selected_template<n>" (1-based position in the carousel).
+  function templateParam(id: string): string {
+    const index = templates.findIndex((template) => template.id === id);
+    return `Selected_template${index >= 0 ? index + 1 : ''}`;
+  }
+
   function handleNameChange(value: string) {
     nameTouched.current = true;
     setName(value);
@@ -101,14 +117,23 @@ function Flow() {
   }
 
   useEffect(() => {
-    getProfile(jwt).then((fetched) => {
-      setProfile(fetched);
-      // Prefill from the profile only if the user hasn't already typed a name (the fetch can resolve
-      // after the user has edited it, which would otherwise clobber their edit back to the JWT name).
-      if (fetched.username && !nameTouched.current) {
-        setName(fetched.username);
-      }
-    });
+    // Log the landing pageload once, with the profile's state/constituency when they're available.
+    const firePageload = (p: Profile) => {
+      if (pageloadLogged.current) return;
+      pageloadLogged.current = true;
+      logAnalytics(ANALYTICS_PAGES.landing, 'pageload', { jwt, state: p.state, constituency: p.constituency });
+    };
+    getProfile(jwt)
+      .then((fetched) => {
+        setProfile(fetched);
+        // Prefill from the profile only if the user hasn't already typed a name (the fetch can resolve
+        // after the user has edited it, which would otherwise clobber their edit back to the JWT name).
+        if (fetched.username && !nameTouched.current) {
+          setName(fetched.username);
+        }
+        firePageload(fetched);
+      })
+      .catch(() => firePageload(EMPTY_PROFILE));
   }, [jwt]);
 
   const selectedTemplate = templates.find((template) => template.id === templateId) ?? templates[0];
@@ -168,14 +193,8 @@ function Flow() {
       setOverlapWarning(result.warning === 'text-overlap');
       setProcessedToast(false);
       setStep('preview');
-    } catch (err) {
-      // TEMP DEBUG: surface the real failure (status / code / request id) so the on-screen error
-      // tells us why /composite rejected the adjusted cutout. Revert to the plain message after.
-      const detail =
-        err instanceof CompositeError
-          ? `[${err.kind} status=${err.status ?? '-'} code=${err.code ?? '-'} req=${err.requestId ?? '-'}]`
-          : `[${String(err)}]`;
-      setAdjustError(`We couldn't apply your changes. ${detail}`);
+    } catch {
+      setAdjustError("We couldn't apply your changes. Please try again.");
     } finally {
       setAdjustBusy(false);
     }
@@ -206,15 +225,26 @@ function Flow() {
           name={name}
           onNameChange={handleNameChange}
           selectedTemplateId={templateId}
-          onSelectTemplate={setTemplateId}
-          onCapture={() => setStep('tips')}
+          onSelectTemplate={(id) => {
+            setTemplateId(id);
+            trackLanding('select_frame', { parameters: templateParam(id), template: id });
+          }}
+          onCapture={() => {
+            trackLanding('capture');
+            setStep('tips');
+          }}
           onFileSelected={handleFileSelected}
           onUpload={nativeApp ? startNativeUpload : undefined}
-          onBack={() => setShowExitConfirm(true)}
+          onUploadClick={() => trackLanding('upload')}
+          onBack={() => {
+            trackLanding('back');
+            setShowExitConfirm(true);
+          }}
         />
       )}
       {step === 'tips' && (
         <Tips
+          track={trackInstruction}
           onProceed={() => (nativeApp ? void startNativeCapture() : cameraInputRef.current?.click())}
           onBack={() => setStep('landing')}
         />
@@ -286,6 +316,8 @@ function Flow() {
           onAdjust={adjustEnabled && photo ? handleStartAdjust : undefined}
           adjusting={preparingAdjust}
           onPost={handlePost}
+          track={trackPreview}
+          trackInspire={trackInspire}
         />
       )}
       {step === 'adjust' && cutout && (

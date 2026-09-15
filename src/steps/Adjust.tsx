@@ -12,8 +12,10 @@ type Props = {
   onApply: (box: Rect) => void;
 };
 
-const MIN_SCALE = 0.3;
-const MAX_SCALE = 2.5;
+// Sizing (resize slider) is disabled for now — commented out, NOT removed. Uncomment these and the
+// `adjust__slider` block in the JSX below to bring the resize option back.
+// const MIN_SCALE = 0.3;
+// const MAX_SCALE = 2.5;
 
 // Fit `size` inside `box`, bottom-anchored and horizontally centred (mirrors the backend's
 // fit_bottom_center so the initial placement matches the auto-composited one).
@@ -119,7 +121,7 @@ export function Adjust({ template, cutout, busy = false, error, onCancel, onAppl
         <h1>Adjust photo</h1>
       </header>
 
-      <p className="adjust__hint">Drag to reposition and use the slider to resize your photo.</p>
+      <p className="adjust__hint">Drag to reposition your photo.</p>
 
       <div className="adjust__stage" ref={stageRef} style={{ height: dispH || undefined }}>
         {/* Clean template (no avatar-placeholder silhouette), so only the user's photo shows over it. */}
@@ -167,6 +169,8 @@ export function Adjust({ template, cutout, busy = false, error, onCancel, onAppl
         )}
       </div>
 
+      {/* Sizing option disabled — commented out, NOT removed. Uncomment (and the MIN_SCALE/MAX_SCALE
+          constants above) to restore the resize slider.
       <div className="adjust__slider">
         <span className="adjust__slider-icon adjust__slider-icon--sm" aria-hidden="true">A</span>
         <input
@@ -181,6 +185,7 @@ export function Adjust({ template, cutout, busy = false, error, onCancel, onAppl
         />
         <span className="adjust__slider-icon adjust__slider-icon--lg" aria-hidden="true">A</span>
       </div>
+      */}
 
       {error && (
         <p className="adjust__error" role="alert">

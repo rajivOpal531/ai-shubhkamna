@@ -16,6 +16,9 @@ type Props = {
   // When set (inside the native app), the Upload button opens the native gallery instead of the
   // hidden file input. Left undefined in a plain browser so the file input is used.
   onUpload?: () => void;
+  // Fired when the Upload button is tapped, before the picker opens (for analytics), on both the
+  // native and the browser path.
+  onUploadClick?: () => void;
   onBack: () => void;
 };
 
@@ -27,6 +30,7 @@ export function Landing({
   onCapture,
   onFileSelected,
   onUpload,
+  onUploadClick,
   onBack,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -75,7 +79,11 @@ export function Landing({
         <button
           type="button"
           className="landing__upload"
-          onClick={() => (onUpload ? onUpload() : fileInputRef.current?.click())}
+          onClick={() => {
+            onUploadClick?.();
+            if (onUpload) onUpload();
+            else fileInputRef.current?.click();
+          }}
         >
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
             <path

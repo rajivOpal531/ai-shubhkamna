@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Toast } from '../components/Toast';
 import { AppBackground } from '../components/AppBackground';
 import { WISH_HASHTAGS, WISH_MAX_LENGTH } from '../data/wishes';
+import type { TrackFn } from '../services/analytics';
 import './Preview.css';
 
 type Props = {
@@ -21,6 +22,8 @@ type Props = {
   onAdjust?: () => void;
   adjusting?: boolean;
   onPost: () => void;
+  track?: TrackFn; // analytics for the preview page
+  trackInspire?: TrackFn; // analytics for the "Popular Messages" sheet
 };
 
 export function Preview({
@@ -37,10 +40,17 @@ export function Preview({
   onAdjust,
   adjusting = false,
   onPost,
+  track,
+  trackInspire,
 }: Props) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmBack, setConfirmBack] = useState(false);
+
+  useEffect(() => {
+    track?.('pageload');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!composited.imageBlob) {
@@ -66,7 +76,16 @@ export function Preview({
         />
       )}
       <header className="preview__header">
-        <button type="button" className="preview__back" aria-label="Back" onClick={onBack} disabled={posting}>
+        <button
+          type="button"
+          className="preview__back"
+          aria-label="Back"
+          onClick={() => {
+            track?.('back');
+            onBack();
+          }}
+          disabled={posting}
+        >
           ←
         </button>
         <h1>AI Shubhkamna</h1>
@@ -94,7 +113,14 @@ export function Preview({
         />
         <div className="preview__field-footer">
           <span className="preview__hashtags">{WISH_HASHTAGS}</span>
-          <button type="button" className="preview__inspire" onClick={() => setSheetOpen(true)}>
+          <button
+            type="button"
+            className="preview__inspire"
+            onClick={() => {
+              track?.('inspire me');
+              setSheetOpen(true);
+            }}
+          >
             Inspire me
           </button>
         </div>
@@ -120,10 +146,26 @@ export function Preview({
       )}
 
       <div className="preview__actions">
-        <button type="button" className="preview__retake" onClick={() => setConfirmBack(true)} disabled={posting}>
+        <button
+          type="button"
+          className="preview__retake"
+          onClick={() => {
+            track?.('retake');
+            setConfirmBack(true);
+          }}
+          disabled={posting}
+        >
           {retakeLabel}
         </button>
-        <button type="button" className="preview__post" onClick={onPost} disabled={posting}>
+        <button
+          type="button"
+          className="preview__post"
+          onClick={() => {
+            track?.('post', { caption: wish });
+            onPost();
+          }}
+          disabled={posting}
+        >
           {posting ? 'Posting…' : 'Post'}
         </button>
       </div>
@@ -136,6 +178,7 @@ export function Preview({
             setSheetOpen(false);
           }}
           onClose={() => setSheetOpen(false)}
+          track={trackInspire}
         />
       )}
 

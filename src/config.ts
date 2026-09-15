@@ -4,6 +4,8 @@ export const config = {
   createPostByUrlEndpoint: (import.meta.env.VITE_CREATE_POST_BY_URL as string) || '',
   createPostFileEndpoint: (import.meta.env.VITE_CREATE_POST_FILE_URL as string) || '',
   profileUrl: (import.meta.env.VITE_PROFILE_URL as string) || '',
+  // Analytics (user-action logging). Empty -> logging is a no-op (safe for local dev).
+  analyticsUrl: (import.meta.env.VITE_ANALYTICS_URL as string) || '',
   compositeUrl: (import.meta.env.VITE_COMPOSITE_URL as string) || '',
   // Adjust-photo step one: same host as /composite, but the /cutout route. Overridable if the two
   // ever diverge.

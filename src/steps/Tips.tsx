@@ -1,10 +1,13 @@
+import { useEffect } from 'react';
 import { AppBackground } from '../components/AppBackground';
 import tipsIllustration from '../assets/tips-illustration.png';
+import type { TrackFn } from '../services/analytics';
 import './Tips.css';
 
 type Props = {
   onProceed: () => void;
   onBack: () => void;
+  track?: TrackFn;
 };
 
 type Tip = { pre: string; em?: string; post?: string };
@@ -18,12 +21,25 @@ const TIPS: Tip[] = [
   { pre: 'Without any objects, animals or filters' },
 ];
 
-export function Tips({ onProceed, onBack }: Props) {
+export function Tips({ onProceed, onBack, track }: Props) {
+  useEffect(() => {
+    track?.('pageload');
+    // Fire once on mount; `track` identity changes per render but the page is viewed once here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="tips">
       <AppBackground />
       <header className="tips__header">
-        <button type="button" aria-label="Back" onClick={onBack}>
+        <button
+          type="button"
+          aria-label="Back"
+          onClick={() => {
+            track?.('back');
+            onBack();
+          }}
+        >
           ←
         </button>
         <h1>AI Shubhkamna</h1>
@@ -48,7 +64,14 @@ export function Tips({ onProceed, onBack }: Props) {
         </ol>
       </div>
 
-      <button type="button" className="tips__proceed" onClick={onProceed}>
+      <button
+        type="button"
+        className="tips__proceed"
+        onClick={() => {
+          track?.('proceed');
+          onProceed();
+        }}
+      >
         Proceed
       </button>
     </div>

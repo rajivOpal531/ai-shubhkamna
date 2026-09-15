@@ -61,7 +61,9 @@ describe('Adjust', () => {
     expect(onApply.mock.calls[0][0]).toEqual({ x: 540, y: 400, w: 480, h: 720 });
   });
 
-  it('grows the box around its centre when the slider scales up', () => {
+  // Skipped: the resize slider is disabled (commented out) in Adjust.tsx. Re-enable this test when
+  // the sizing option is restored.
+  it.skip('grows the box around its centre when the slider scales up', () => {
     const onApply = vi.fn();
     render(<Adjust template={TEMPLATE} cutout={CUTOUT} onCancel={() => {}} onApply={onApply} />);
     loadCutoutImage();

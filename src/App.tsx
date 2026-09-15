@@ -14,7 +14,7 @@ import { createPostByImageUrl, createPostWithFile } from './services/createPost'
 import { fetchCutout, compositeCutout, CompositeError } from './services/composite';
 import { downscaleImage } from './utils/downscaleImage';
 import { redirectWithJwt } from './utils/redirect';
-import { isNativeApp, openCamera, openGallery } from './services/nativeBridge';
+import { isNativeApp, openCamera, openGallery, NativeMediaError } from './services/nativeBridge';
 import { isAndroidWebView } from './utils/userAgent';
 import { config } from './config';
 import type { CompositeResult, CutoutResult, Profile, Rect, Step } from './types';
@@ -70,8 +70,12 @@ function Flow() {
     try {
       const blob = await openCamera();
       await handleCaptured(blob);
-    } catch {
-      // user cancelled or the request timed out -- nothing to do, keep the current screen.
+    } catch (err) {
+      // The user backing out is final -- do nothing. Any other native failure (the app returned no
+      // image, an unreadable one, a timeout, or no bridge) falls back to the file picker so the user
+      // can still add a photo instead of being stuck.
+      if (err instanceof NativeMediaError && err.reason === 'cancelled') return;
+      cameraInputRef.current?.click();
     }
   }
 
@@ -80,8 +84,9 @@ function Flow() {
     try {
       const blob = await openGallery();
       await handleFileSelected(blob);
-    } catch {
-      // user cancelled or the request timed out.
+    } catch (err) {
+      if (err instanceof NativeMediaError && err.reason === 'cancelled') return;
+      galleryInputRef.current?.click();
     }
   }
 

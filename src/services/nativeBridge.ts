@@ -117,6 +117,20 @@ function externalCall(payload: string): boolean {
   return dispatched;
 }
 
+/** Why a native media request failed. `cancelled` means the user backed out (do nothing); every
+ *  other reason means the native path is unusable, so the caller can fall back to the file input. */
+export type NativeMediaReason = 'cancelled' | 'empty' | 'unavailable' | 'read-failed' | 'timeout';
+
+export class NativeMediaError extends Error {
+  constructor(
+    readonly reason: NativeMediaReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'NativeMediaError';
+  }
+}
+
 type Pending = {
   resolve: (blob: Blob) => void;
   reject: (error: Error) => void;
@@ -198,47 +212,34 @@ function installCallbacks(): void {
   if (callbacksInstalled) return;
   callbacksInstalled = true;
 
-  // A spurious empty call (the app fires a callback with null / "null" / "" when it has no image)
-  // must NOT settle the request with garbage -- ignore it so a real payload can still arrive.
   const isEmpty = (data: unknown): boolean =>
     data == null || data === 'null' || (typeof data === 'string' && data.trim().length === 0);
 
-  const onSuccess = (name: string) => (data: unknown) => {
-    if (isEmpty(data)) {
-      // TEMP DEBUG: surfaces which callback fired empty (e.g. the gallery returning no image).
-      try {
-        window.alert(`[debug] ${name}: no image in payload (got ${JSON.stringify(data)}).`);
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
+  const onSuccess = (data: unknown) => {
     const current = settle();
     if (!current) return;
+    // The app sometimes fires the callback with null/"" (seen on the gallery path): reject as `empty`
+    // so the caller can fall back to the file picker rather than build a card from nothing.
+    if (isEmpty(data)) {
+      current.reject(new NativeMediaError('empty', 'The app returned no image'));
+      return;
+    }
     toBlob(data).then(
       (blob) => current.resolve(blob),
-      (err: unknown) => {
-        // TEMP DEBUG: only fires when a non-empty payload still couldn't be read.
-        try {
-          window.alert(`[debug] ${name} could not read photo: ${err instanceof Error ? err.message : String(err)}`);
-        } catch {
-          /* ignore */
-        }
-        current.reject(err instanceof Error ? err : new Error('Could not read native media result'));
-      },
+      () => current.reject(new NativeMediaError('read-failed', 'Could not read the returned photo')),
     );
   };
 
   const onCancel = () => {
     const current = settle();
     if (!current) return;
-    current.reject(new Error('Media selection cancelled'));
+    current.reject(new NativeMediaError('cancelled', 'Media selection cancelled'));
   };
 
   // Assign by name (each has a different signature, so go through an index type rather than the
   // typed Window fields). The Window interface above documents the same names for readers.
   const w = window as unknown as Record<string, (arg?: unknown) => void>;
-  for (const name of SUCCESS_CALLBACKS) w[name] = onSuccess(name);
+  for (const name of SUCCESS_CALLBACKS) w[name] = onSuccess;
   for (const name of CANCEL_CALLBACKS) w[name] = onCancel;
 }
 
@@ -255,13 +256,13 @@ export function requestNativeMedia(kind: MediaKind): Promise<Blob> {
   const payload = buildPayload(kind);
   return new Promise<Blob>((resolve, reject) => {
     const timer = setTimeout(() => {
-      if (settle()) reject(new Error('Native media request timed out'));
+      if (settle()) reject(new NativeMediaError('timeout', 'Native media request timed out'));
     }, REQUEST_TIMEOUT_MS);
     pending = { resolve, reject, timer };
 
     if (!externalCall(payload)) {
       settle();
-      reject(new Error('No native bridge available'));
+      reject(new NativeMediaError('unavailable', 'No native bridge available'));
     }
   });
 }

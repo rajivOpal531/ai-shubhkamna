@@ -93,6 +93,7 @@ export function Preview({
 
       <img className="preview__card" src={previewSrc} alt="Your birthday card" />
 
+      {/* "Adjust photo" button disabled — commented out, NOT removed. Uncomment to restore.
       {onAdjust && (
         <button type="button" className="preview__adjust" onClick={onAdjust} disabled={posting || adjusting}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -101,6 +102,11 @@ export function Preview({
           {adjusting ? 'Preparing…' : 'Adjust photo'}
         </button>
       )}
+      */}
+      {/* onAdjust / adjusting props are kept (still passed by App) but intentionally unused while the
+          button above is commented out. */}
+      {void onAdjust}
+      {void adjusting}
 
       <h2 className="preview__title">Wishes for PM Modi</h2>
 

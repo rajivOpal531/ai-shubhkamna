@@ -14,6 +14,7 @@ import { createPostByImageUrl, createPostWithFile } from './services/createPost'
 import { fetchCutout, compositeCutout, CompositeError } from './services/composite';
 import { downscaleImage } from './utils/downscaleImage';
 import { redirectWithJwt } from './utils/redirect';
+import { isNativeApp, openCamera, openGallery } from './services/nativeBridge';
 import { isAndroidWebView } from './utils/userAgent';
 import { config } from './config';
 import type { CompositeResult, CutoutResult, Profile, Rect, Step } from './types';
@@ -54,13 +55,42 @@ function Flow() {
   // The Adjust screen needs a real /cutout + /composite backend; hide it in the mock demo flow.
   const adjustEnabled = !config.useMockComposite;
 
+  // Inside the NaMo app WebView we open the device camera/gallery through the native bridge; in a
+  // plain browser this is false and the hidden <input type="file"> below is used instead.
+  const nativeApp = isNativeApp();
+
   function handleNameChange(value: string) {
     nameTouched.current = true;
     setName(value);
   }
 
+  // Native camera path: ask the app to open its camera, then feed the returned photo into the same
+  // pipeline the file input uses. A cancel/timeout rejects; we just stay on the current screen.
+  async function startNativeCapture() {
+    try {
+      const blob = await openCamera();
+      await handleCaptured(blob);
+    } catch {
+      // user cancelled or the request timed out -- nothing to do, keep the current screen.
+    }
+  }
+
+  // Native gallery path: same as above but flagged as an upload (not a capture).
+  async function startNativeUpload() {
+    try {
+      const blob = await openGallery();
+      await handleFileSelected(blob);
+    } catch {
+      // user cancelled or the request timed out.
+    }
+  }
+
   // On a failed composite, Retake/Reupload should reopen the same source the photo came from.
   function repickPhoto() {
+    if (nativeApp) {
+      void (photoSource === 'capture' ? startNativeCapture() : startNativeUpload());
+      return;
+    }
     if (photoSource === 'capture') cameraInputRef.current?.click();
     else galleryInputRef.current?.click();
   }
@@ -78,7 +108,7 @@ function Flow() {
 
   const selectedTemplate = templates.find((template) => template.id === templateId) ?? templates[0];
 
-  async function handleFileSelected(file: File) {
+  async function handleFileSelected(file: Blob) {
     const photo = await downscaleImage(file);
     setPhoto(photo);
     setPhotoSource('upload');
@@ -168,11 +198,15 @@ function Flow() {
           onSelectTemplate={setTemplateId}
           onCapture={() => setStep('tips')}
           onFileSelected={handleFileSelected}
+          onUpload={nativeApp ? startNativeUpload : undefined}
           onBack={() => setShowExitConfirm(true)}
         />
       )}
       {step === 'tips' && (
-        <Tips onProceed={() => cameraInputRef.current?.click()} onBack={() => setStep('landing')} />
+        <Tips
+          onProceed={() => (nativeApp ? void startNativeCapture() : cameraInputRef.current?.click())}
+          onBack={() => setStep('landing')}
+        />
       )}
       {/* Camera path. In browsers `capture` opens the native camera directly (without it, Chrome on
           Android 13+ shows the photo picker, which has no camera option). Android WebViews (the NaMo

@@ -13,6 +13,9 @@ type Props = {
   onSelectTemplate: (id: string) => void;
   onCapture: () => void;
   onFileSelected: (file: File) => void;
+  // When set (inside the native app), the Upload button opens the native gallery instead of the
+  // hidden file input. Left undefined in a plain browser so the file input is used.
+  onUpload?: () => void;
   onBack: () => void;
 };
 
@@ -23,6 +26,7 @@ export function Landing({
   onSelectTemplate,
   onCapture,
   onFileSelected,
+  onUpload,
   onBack,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,7 +72,11 @@ export function Landing({
       </div>
 
       <div className="landing__actions">
-        <button type="button" className="landing__upload" onClick={() => fileInputRef.current?.click()}>
+        <button
+          type="button"
+          className="landing__upload"
+          onClick={() => (onUpload ? onUpload() : fileInputRef.current?.click())}
+        >
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
             <path
               d="M12 16V4m0 0l-4 4m4-4l4 4M5 20h14"

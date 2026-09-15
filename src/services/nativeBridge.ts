@@ -3,25 +3,30 @@
  * WebView. In a plain browser none of these bridges exist, so `isNativeApp()` returns false and the
  * callers fall back to the hidden <input type="file"> they already use (keeps localhost dev working).
  *
- * Two directions, both a CONTRACT with the Android / iOS teams:
- *   1. JS -> native : we hand the native side a base64(JSON) payload describing what to open.
- *        Android : window.<ANDROID_INTERFACE>.<ANDROID_METHOD>(payload)  (addJavascriptInterface)
- *        iOS     : window.webkit.messageHandlers.<IOS_MESSAGE_HANDLER>.postMessage(payload)
- *   2. native -> JS : when the user has picked/taken a photo, native calls a global callback:
- *        success : window.<RESULT_CALLBACK>(result)   // base64 / data-URI / { base64 } / [ ... ]
- *        cancel  : window.<ERROR_CALLBACK>(message?)  // user cancelled or a limit failed
- *
- * ┌──────────────────────────────────────────────────────────────────────────────────────────┐
- * │ IMPORTANT: the five names below MUST match exactly what the Android / iOS apps use. They   │
- * │ are the only things to change if the native contract differs — nothing else in this file.  │
- * └──────────────────────────────────────────────────────────────────────────────────────────┘
+ * Two directions:
+ *   1. JS -> native (SEND) : hand the native side a base64(JSON) payload describing what to open.
+ *        Taken verbatim from the app's own externalCall(): fire all three, ignore the ones absent.
+ *        Android : window.android.__externalCall(payload)
+ *        Global  : window.__externalCall(payload)
+ *        iOS     : window.webkit.messageHandlers.callback.postMessage(payload)
+ *   2. native -> JS (RETURN) : when the photo is ready the app calls a global JS function with it.
+ *        That function's name is NOT in the externalCall snippet, so RESULT_CALLBACK / ERROR_CALLBACK
+ *        below are still placeholders -- confirm them with the app team. The camera opens either way;
+ *        only the photo coming back into the flow depends on those two names matching.
  */
 
-const ANDROID_INTERFACE = 'Android'; // window.Android, injected via addJavascriptInterface(obj, "Android")
-const ANDROID_METHOD = 'openMedia'; // window.Android.openMedia(base64Payload)
-const IOS_MESSAGE_HANDLER = 'openMedia'; // window.webkit.messageHandlers.openMedia.postMessage(base64Payload)
-const RESULT_CALLBACK = 'onNativeMediaResult'; // native -> JS on success
-const ERROR_CALLBACK = 'onNativeMediaError'; // native -> JS on cancel / failure
+// --- SEND side (JS -> native), taken from the app's own externalCall(): fire every channel that
+//     exists; the ones that don't throw and are ignored. This matches the integration code exactly.
+const ANDROID_INTERFACE = 'android'; // window.android (lowercase) -- the app's JS interface object
+const ANDROID_METHOD = '__externalCall'; // window.android.__externalCall(base64Payload)
+const GLOBAL_CALL = '__externalCall'; // some builds expose it directly: window.__externalCall(base64Payload)
+const IOS_MESSAGE_HANDLER = 'callback'; // window.webkit.messageHandlers.callback.postMessage(base64Payload)
+
+// --- RETURN side (native -> JS): the app calls these globals on our page once the user is done.
+//     Android fires one media callback for both camera and gallery; iOS has per-source success and
+//     cancel callbacks. We register every one and route to the single in-flight request.
+const SUCCESS_CALLBACKS = ['sendMedia', 'capturedCamera', 'selectedPhotoGallery'] as const; // photo ready
+const CANCEL_CALLBACKS = ['cancelledCamera', 'cancelledAtPreview', 'cancelledPhotoGallery'] as const; // dismissed
 
 // Native pickers can take a while (permission prompt + capture); give up eventually so a dropped
 // callback never leaves the UI stuck on a spinner.
@@ -37,15 +42,24 @@ type IosMessageHandler = { postMessage: (payload: string) => void };
 
 declare global {
   interface Window {
-    Android?: AndroidBridge;
+    android?: AndroidBridge;
+    __externalCall?: (payload: string) => void;
     webkit?: { messageHandlers?: Record<string, IosMessageHandler | undefined> };
-    onNativeMediaResult?: (result: unknown) => void;
-    onNativeMediaError?: (message?: unknown) => void;
+    // RETURN-side callbacks the native app invokes on this page (see SUCCESS_/CANCEL_CALLBACKS).
+    sendMedia?: (data: unknown) => void;
+    capturedCamera?: (data: unknown) => void;
+    selectedPhotoGallery?: (data: unknown) => void;
+    cancelledCamera?: () => void;
+    cancelledAtPreview?: () => void;
+    cancelledPhotoGallery?: () => void;
   }
 }
 
 export function isAndroidBridge(): boolean {
-  return typeof window[ANDROID_INTERFACE]?.[ANDROID_METHOD] === 'function';
+  return (
+    typeof window[ANDROID_INTERFACE]?.[ANDROID_METHOD] === 'function' ||
+    typeof window[GLOBAL_CALL] === 'function'
+  );
 }
 
 export function isIosBridge(): boolean {
@@ -71,17 +85,36 @@ function buildPayload(kind: MediaKind): string {
   return btoa(JSON.stringify(request));
 }
 
-/** Hand the payload to whichever native bridge exists. Returns false if neither is present. */
+/** Fire the payload down every native channel that exists (Android JS interface, a global function,
+ *  and the iOS message handler), each guarded so a missing/throwing one doesn't stop the others --
+ *  exactly like the app's own externalCall(). Returns true if at least one channel accepted it. */
 function externalCall(payload: string): boolean {
-  if (isAndroidBridge()) {
-    window[ANDROID_INTERFACE]![ANDROID_METHOD]!(payload);
-    return true;
+  let dispatched = false;
+  try {
+    if (typeof window[ANDROID_INTERFACE]?.[ANDROID_METHOD] === 'function') {
+      window[ANDROID_INTERFACE]![ANDROID_METHOD]!(payload);
+      dispatched = true;
+    }
+  } catch {
+    // Android channel unavailable/threw -- try the next one.
   }
-  if (isIosBridge()) {
-    window.webkit!.messageHandlers![IOS_MESSAGE_HANDLER]!.postMessage(payload);
-    return true;
+  try {
+    if (typeof window[GLOBAL_CALL] === 'function') {
+      window[GLOBAL_CALL]!(payload);
+      dispatched = true;
+    }
+  } catch {
+    // global __externalCall unavailable/threw -- try the next one.
   }
-  return false;
+  try {
+    if (typeof window.webkit?.messageHandlers?.[IOS_MESSAGE_HANDLER]?.postMessage === 'function') {
+      window.webkit!.messageHandlers![IOS_MESSAGE_HANDLER]!.postMessage(payload);
+      dispatched = true;
+    }
+  } catch {
+    // iOS handler unavailable/threw.
+  }
+  return dispatched;
 }
 
 type Pending = {
@@ -142,21 +175,27 @@ function installCallbacks(): void {
   if (callbacksInstalled) return;
   callbacksInstalled = true;
 
-  window[RESULT_CALLBACK] = (result: unknown) => {
+  const onSuccess = (data: unknown) => {
     const current = settle();
     if (!current) return;
     try {
-      current.resolve(resultToBlob(result));
+      current.resolve(resultToBlob(data));
     } catch (err) {
       current.reject(err instanceof Error ? err : new Error('Could not read native media result'));
     }
   };
 
-  window[ERROR_CALLBACK] = (message?: unknown) => {
+  const onCancel = () => {
     const current = settle();
     if (!current) return;
-    current.reject(new Error(typeof message === 'string' && message ? message : 'Media selection cancelled'));
+    current.reject(new Error('Media selection cancelled'));
   };
+
+  // Assign by name (each has a different signature, so go through an index type rather than the
+  // typed Window fields). The Window interface above documents the same names for readers.
+  const w = window as unknown as Record<string, (arg?: unknown) => void>;
+  for (const name of SUCCESS_CALLBACKS) w[name] = onSuccess;
+  for (const name of CANCEL_CALLBACKS) w[name] = onCancel;
 }
 
 /** Open the native camera/gallery and resolve with the chosen photo as a Blob. Rejects on cancel,

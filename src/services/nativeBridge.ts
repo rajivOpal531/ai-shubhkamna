@@ -135,31 +135,51 @@ function decodeBase64(base64: string, mime: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
-/** Accepts the shapes native may send: a raw base64 string, a data URI, { base64 } / { data } /
- *  { image } / { uri } (optionally with mimeType), or an array of any of those (first entry wins). */
-function resultToBlob(result: unknown): Blob {
-  if (typeof result === 'string') {
-    const value = result.trim();
-    if (value.startsWith('data:')) {
-      const comma = value.indexOf(',');
-      const mime = value.slice(5, value.indexOf(';') >= 0 ? value.indexOf(';') : comma) || 'image/jpeg';
-      return decodeBase64(value.slice(comma + 1), mime);
+/** Reduce whatever the app passes -- an array of URIs, a JSON-array string like "[content://...]",
+ *  a wrapper object, or a bare string -- down to the single string that identifies the photo. */
+function unwrapMedia(data: unknown): unknown {
+  if (typeof data === 'string') {
+    const text = data.trim();
+    if (text.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed) && parsed.length > 0) return unwrapMedia(parsed[0]);
+      } catch {
+        // Not JSON -- treat the string as-is below.
+      }
     }
-    return decodeBase64(value, 'image/jpeg');
+    return data;
   }
-  if (Array.isArray(result) && result.length > 0) {
-    return resultToBlob(result[0]);
+  if (Array.isArray(data)) return data.length > 0 ? unwrapMedia(data[0]) : data;
+  if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    const inner = obj.uri ?? obj.path ?? obj.url ?? obj.base64 ?? obj.data ?? obj.image;
+    if (inner !== undefined) return unwrapMedia(inner);
   }
-  if (result && typeof result === 'object') {
-    const obj = result as Record<string, unknown>;
-    const data = obj.base64 ?? obj.data ?? obj.image ?? obj.uri;
-    if (typeof data === 'string') {
-      const mime = typeof obj.mimeType === 'string' ? obj.mimeType : 'image/jpeg';
-      // data URIs carry their own mime; the string branch handles that.
-      return resultToBlob(data.startsWith('data:') ? data : `data:${mime};base64,${data}`);
-    }
+  return data;
+}
+
+/** Turn the app's media result into a Blob. The NaMo app hands back a content:// (Android) / file://
+ *  (iOS) URI to the captured photo, which we fetch to get the actual bytes; a raw base64 string or a
+ *  data: URI is also accepted. Async because a URI has to be fetched. */
+async function toBlob(data: unknown): Promise<Blob> {
+  const value = unwrapMedia(data);
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error('Unrecognized native media result');
   }
-  throw new Error('Unrecognized native media result');
+  const text = value.trim();
+  if (text.startsWith('data:')) {
+    const comma = text.indexOf(',');
+    const mime = text.slice(5, text.indexOf(';') >= 0 ? text.indexOf(';') : comma) || 'image/jpeg';
+    return decodeBase64(text.slice(comma + 1), mime);
+  }
+  if (/^(content|file|blob|https?):/i.test(text)) {
+    const response = await fetch(text);
+    if (!response.ok) throw new Error(`Could not read the photo from the app (status ${response.status})`);
+    return response.blob();
+  }
+  // No scheme and not a data: URI -> assume it is raw base64.
+  return decodeBase64(text, 'image/jpeg');
 }
 
 function settle(): Pending | null {
@@ -178,11 +198,33 @@ function installCallbacks(): void {
   const onSuccess = (data: unknown) => {
     const current = settle();
     if (!current) return;
-    try {
-      current.resolve(resultToBlob(data));
-    } catch (err) {
-      current.reject(err instanceof Error ? err : new Error('Could not read native media result'));
-    }
+    // TEMP DEBUG (remove after diagnosing the app upload): show what the app handed us and what the
+    // fetched blob looks like, so we can tell an empty/HTML body from a real image on the device.
+    const preview = (() => {
+      try {
+        return typeof data === 'string' ? data.slice(0, 100) : JSON.stringify(data).slice(0, 100);
+      } catch {
+        return String(data);
+      }
+    })();
+    toBlob(data).then(
+      (blob) => {
+        try {
+          window.alert(`[debug] media OK\ninput: ${preview}\nblob: ${blob.size} bytes, type "${blob.type}"`);
+        } catch {
+          /* ignore */
+        }
+        current.resolve(blob);
+      },
+      (err: unknown) => {
+        try {
+          window.alert(`[debug] media FAIL\ninput: ${preview}\nerror: ${err instanceof Error ? err.message : String(err)}`);
+        } catch {
+          /* ignore */
+        }
+        current.reject(err instanceof Error ? err : new Error('Could not read native media result'));
+      },
+    );
   };
 
   const onCancel = () => {

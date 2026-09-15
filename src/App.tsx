@@ -168,8 +168,14 @@ function Flow() {
       setOverlapWarning(result.warning === 'text-overlap');
       setProcessedToast(false);
       setStep('preview');
-    } catch {
-      setAdjustError("We couldn't apply your changes. Please try again.");
+    } catch (err) {
+      // TEMP DEBUG: surface the real failure (status / code / request id) so the on-screen error
+      // tells us why /composite rejected the adjusted cutout. Revert to the plain message after.
+      const detail =
+        err instanceof CompositeError
+          ? `[${err.kind} status=${err.status ?? '-'} code=${err.code ?? '-'} req=${err.requestId ?? '-'}]`
+          : `[${String(err)}]`;
+      setAdjustError(`We couldn't apply your changes. ${detail}`);
     } finally {
       setAdjustBusy(false);
     }

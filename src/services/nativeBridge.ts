@@ -178,8 +178,11 @@ async function toBlob(data: unknown): Promise<Blob> {
     if (!response.ok) throw new Error(`Could not read the photo from the app (status ${response.status})`);
     return response.blob();
   }
-  // No scheme and not a data: URI -> assume it is raw base64.
-  return decodeBase64(text, 'image/jpeg');
+  // No scheme and not a data: URI -> only accept it if it plausibly is base64 image data. This stops
+  // junk like "null" from being decoded into a tiny garbage blob that the backend rejects as 415.
+  const looksBase64 = text.length >= 100 && /^[A-Za-z0-9+/=\r\n]+$/.test(text);
+  if (looksBase64) return decodeBase64(text.replace(/\s+/g, ''), 'image/jpeg');
+  throw new Error('No readable image in native result');
 }
 
 function settle(): Pending | null {
@@ -195,30 +198,29 @@ function installCallbacks(): void {
   if (callbacksInstalled) return;
   callbacksInstalled = true;
 
-  const onSuccess = (data: unknown) => {
+  // A spurious empty call (the app fires a callback with null / "null" / "" when it has no image)
+  // must NOT settle the request with garbage -- ignore it so a real payload can still arrive.
+  const isEmpty = (data: unknown): boolean =>
+    data == null || data === 'null' || (typeof data === 'string' && data.trim().length === 0);
+
+  const onSuccess = (name: string) => (data: unknown) => {
+    if (isEmpty(data)) {
+      // TEMP DEBUG: surfaces which callback fired empty (e.g. the gallery returning no image).
+      try {
+        window.alert(`[debug] ${name}: no image in payload (got ${JSON.stringify(data)}).`);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     const current = settle();
     if (!current) return;
-    // TEMP DEBUG (remove after diagnosing the app upload): show what the app handed us and what the
-    // fetched blob looks like, so we can tell an empty/HTML body from a real image on the device.
-    const preview = (() => {
-      try {
-        return typeof data === 'string' ? data.slice(0, 100) : JSON.stringify(data).slice(0, 100);
-      } catch {
-        return String(data);
-      }
-    })();
     toBlob(data).then(
-      (blob) => {
-        try {
-          window.alert(`[debug] media OK\ninput: ${preview}\nblob: ${blob.size} bytes, type "${blob.type}"`);
-        } catch {
-          /* ignore */
-        }
-        current.resolve(blob);
-      },
+      (blob) => current.resolve(blob),
       (err: unknown) => {
+        // TEMP DEBUG: only fires when a non-empty payload still couldn't be read.
         try {
-          window.alert(`[debug] media FAIL\ninput: ${preview}\nerror: ${err instanceof Error ? err.message : String(err)}`);
+          window.alert(`[debug] ${name} could not read photo: ${err instanceof Error ? err.message : String(err)}`);
         } catch {
           /* ignore */
         }
@@ -236,7 +238,7 @@ function installCallbacks(): void {
   // Assign by name (each has a different signature, so go through an index type rather than the
   // typed Window fields). The Window interface above documents the same names for readers.
   const w = window as unknown as Record<string, (arg?: unknown) => void>;
-  for (const name of SUCCESS_CALLBACKS) w[name] = onSuccess;
+  for (const name of SUCCESS_CALLBACKS) w[name] = onSuccess(name);
   for (const name of CANCEL_CALLBACKS) w[name] = onCancel;
 }
 

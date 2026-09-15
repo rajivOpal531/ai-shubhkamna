@@ -216,14 +216,12 @@ function installCallbacks(): void {
     data == null || data === 'null' || (typeof data === 'string' && data.trim().length === 0);
 
   const onSuccess = (data: unknown) => {
+    // The app fires the callback with null/"" as an early ack (seen on the gallery path) BEFORE the
+    // real image arrives once the user confirms on the native preview. Ignore the empty ack and keep
+    // waiting -- do NOT settle -- so the real payload (or a cancel callback) still lands.
+    if (isEmpty(data)) return;
     const current = settle();
     if (!current) return;
-    // The app sometimes fires the callback with null/"" (seen on the gallery path): reject as `empty`
-    // so the caller can fall back to the file picker rather than build a card from nothing.
-    if (isEmpty(data)) {
-      current.reject(new NativeMediaError('empty', 'The app returned no image'));
-      return;
-    }
     toBlob(data).then(
       (blob) => current.resolve(blob),
       () => current.reject(new NativeMediaError('read-failed', 'Could not read the returned photo')),

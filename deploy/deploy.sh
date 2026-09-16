@@ -25,12 +25,13 @@ main() {
   git -C "$repo" pull --ff-only origin master
   git -C "$repo" --no-pager log --oneline -1
   restore_missing_tracked_files "$repo"
+  relabel_for_selinux "$repo"
 
   if [[ "$target" == all || "$target" == ui ]]; then
     echo ">> Building frontend (inside node:20-alpine; no Node needed on the host)"
     [[ -f "$repo/.env.production" ]] || cp "$repo/.env.production.example" "$repo/.env.production"
     docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp \
-      -v "$repo":/app -w /app node:20-alpine \
+      -v "$repo":/app:z -w /app node:20-alpine \
       sh -c "npm ci --no-audit --no-fund && npm run build"
   fi
 
@@ -73,6 +74,19 @@ restore_missing_tracked_files() {
   echo ">> Restoring tracked files missing from the checkout:"
   echo "$missing" | sed 's/^/   /'
   git -C "$repo" ls-files --deleted -z | xargs -0 -r git -C "$repo" checkout --
+}
+
+# On SELinux-enforcing hosts (SLES, Amazon Linux 2023) containers may only touch host files carrying
+# the container label. The bind mounts use ",z" so Docker labels them on container (re)creation, but
+# `git pull` writes new inodes with the default home label and `caddy reload` (no recreation) would
+# then get "permission denied". Label the mounted directories after every pull. No-op elsewhere.
+relabel_for_selinux() {
+  local repo="$1"
+  [[ -e /sys/fs/selinux/enforce ]] || return 0
+  [[ "$(cat /sys/fs/selinux/enforce 2>/dev/null)" == 1 ]] || return 0
+  echo ">> SELinux is enforcing: labelling mounted directories for containers"
+  mkdir -p "$repo/dist"
+  chcon -R -t container_file_t "$repo/deploy/caddy" "$repo/dist" \n    || echo "!! chcon failed; if Caddy cannot read its Caddyfile, run it manually with sudo" >&2
 }
 
 reload_caddy() {

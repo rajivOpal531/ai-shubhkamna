@@ -47,6 +47,13 @@ echo "SERVER_NAME=mumbai" > .env                          # optional: sent back 
 
 `api.env` and `.env` are gitignored; never commit them.
 
+**SELinux hosts** (SLES, Amazon Linux 2023, RHEL family): containers may only read host files that
+carry the container label, otherwise Caddy crash-loops with `open /etc/caddy/Caddyfile: permission
+denied`. The compose bind mounts use `,z` and `deploy.sh` relabels `deploy/caddy` and `dist/` after
+every pull, so nothing manual is needed. If Caddy is already in that state on a host that ran an
+older script, once: `chcon -Rt container_file_t ~/ai-shubhkamna/deploy/caddy ~/ai-shubhkamna/dist`
+then `docker compose restart caddy`.
+
 ### Deploying a change
 
 ```bash

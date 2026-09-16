@@ -18,8 +18,10 @@ services:
     volumes:
       # Mount the directory, not the file: git pull replaces the Caddyfile (new inode), which a
       # single-file bind mount never sees; with a directory mount `caddy reload` picks it up.
-      - ./caddy:/etc/caddy:ro
-      - ../dist:/srv/www:ro
+      # ",z" gives the files the SELinux container label on hosts that enforce it (SLES, Amazon
+      # Linux 2023); without it Caddy gets "permission denied". Ignored where SELinux is off.
+      - ./caddy:/etc/caddy:ro,z
+      - ../dist:/srv/www:ro,z
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

@@ -23,7 +23,7 @@ main() {
 
   echo ">> Pulling latest master"
   git -C "$repo" pull --ff-only origin master
-  git -C "$repo" log --oneline -1
+  git -C "$repo" --no-pager log --oneline -1
 
   if [[ "$target" == all || "$target" == ui ]]; then
     echo ">> Building frontend (inside node:20-alpine; no Node needed on the host)"

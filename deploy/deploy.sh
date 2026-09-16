@@ -52,7 +52,7 @@ main() {
   for i in $(seq 1 20); do
     if curl -fsS http://localhost/health 2>/dev/null; then
       echo
-      echo ">> Deployed. Public check: https://shubhkamnauat.narendramodi.in/health"
+      echo ">> Deployed. Public check: https://aishubhkamna.narendramodi.in/health"
       return 0
     fi
     sleep 3

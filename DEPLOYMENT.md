@@ -13,7 +13,7 @@ The backend needs ~2 GB RAM (it loads an ML model) and must be served over **HTT
 
 ## Current setup: EC2 + Caddy behind CloudFront
 
-This is what runs `shubhkamnauat.narendramodi.in` today. The App Runner / S3 sections further down
+This is what runs `aishubhkamna.narendramodi.in` today. The App Runner / S3 sections further down
 are the original plan, kept for reference.
 
 ```
@@ -78,7 +78,7 @@ POST).
 
 ## Recommended architecture (simplest, no CORS)
 
-One CloudFront distribution on the site domain (`shubhkamnauat.narendramodi.in`) with **two origins**:
+One CloudFront distribution on the site domain (`aishubhkamna.narendramodi.in`) with **two origins**:
 
 - **Default (`/*`)** → the **S3 bucket** holding the frontend build.
 - **`/composite` and `/profile`** → the **backend** (App Runner URL, or an ALB in front of Fargate).
@@ -86,7 +86,7 @@ One CloudFront distribution on the site domain (`shubhkamnauat.narendramodi.in`)
 Because the app and the API then share one origin, there is no CORS to configure and one certificate covers everything. The frontend is already built to call `/composite` and `/profile` as relative paths for exactly this setup.
 
 ```
-                    shubhkamnauat.narendramodi.in
+                    aishubhkamna.narendramodi.in
                               │
                         ┌── CloudFront ──┐
               default /*│                │ /composite, /profile
@@ -128,7 +128,7 @@ App Runner gives you an HTTPS URL like `https://xxxx.ap-south-1.awsapprunner.com
 | Variable | Required | Value |
 |---|---|---|
 | `RESPONSE_MODE` | yes | `image` (returns the card as a file; no S3 needed for storage) |
-| `ALLOWED_ORIGINS` | yes | `https://shubhkamnauat.narendramodi.in` (the site origin) |
+| `ALLOWED_ORIGINS` | yes | `https://aishubhkamna.narendramodi.in` (the site origin) |
 | `USER_JWT_TOKEN_SECRET_KEY` | yes | **secret — get from the project owner** (JWT signing secret) |
 | `PROFILE_DECRYPT_KEY` | yes | **secret — get from the project owner** |
 | `PROFILE_DECRYPT_IV` | yes | **secret — get from the project owner** |
@@ -164,7 +164,7 @@ aws cloudfront create-invalidation --distribution-id <ID> --paths "/*"
 - **Default behavior** → Origin 1 (S3). Enable SPA fallback: a 403/404 response returns `/index.html` with 200.
 - **Behavior `/composite`** → Origin 2. **Allowed methods:** GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE. **Cache policy:** CachingDisabled. **Origin request policy:** forward all headers (incl. `Authorization`) and the body.
 - **Behavior `/profile`** → same as `/composite`.
-- **Alternate domain name:** `shubhkamnauat.narendramodi.in`, with an ACM certificate (in `us-east-1` for CloudFront) and a DNS record pointing the domain at the distribution.
+- **Alternate domain name:** `aishubhkamna.narendramodi.in`, with an ACM certificate (in `us-east-1` for CloudFront) and a DNS record pointing the domain at the distribution.
 
 Origin response timeout: 30–60s is plenty (a card takes ~2s).
 
@@ -172,8 +172,8 @@ Origin response timeout: 30–60s is plenty (a card takes ~2s).
 
 ## 4. Verify after deploy
 
-1. `curl https://shubhkamnauat.narendramodi.in/health` (via the backend behavior, or hit the App Runner URL directly) → `{"status":"ok","model_loaded":true,...}`.
-2. Open `https://shubhkamnauat.narendramodi.in/?jwt=<a real token>` on a phone or browser. The name field should prefill; upload a portrait; the card should composite and preview; Post should land it on the Media Wall.
+1. `curl https://aishubhkamna.narendramodi.in/health` (via the backend behavior, or hit the App Runner URL directly) → `{"status":"ok","model_loaded":true,...}`.
+2. Open `https://aishubhkamna.narendramodi.in/?jwt=<a real token>` on a phone or browser. The name field should prefill; upload a portrait; the card should composite and preview; Post should land it on the Media Wall.
 
 ---
 

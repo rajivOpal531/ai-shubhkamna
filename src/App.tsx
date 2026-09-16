@@ -212,7 +212,8 @@ function Flow() {
     setPosting(false);
 
     if (result.ok) {
-      redirectWithJwt(config.mediaWallUrl, jwt);
+      // source=aiShubhKaamna tells the Media Wall to filter to AI Shubhkamna posts.
+      redirectWithJwt(config.mediaWallUrl, jwt, { source: 'aiShubhKaamna' });
     } else {
       setPostError("We couldn't post your card. Please try again.");
     }

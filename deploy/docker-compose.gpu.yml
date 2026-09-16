@@ -14,6 +14,12 @@ services:
       # rembg falls back to CPU silently when the GPU is unreachable. Refuse to start instead, so
       # rollout-api.sh sees an unhealthy container and keeps the old one serving.
       REQUIRE_GPU: "true"
+    # The api runs as an unprivileged user (uid 10001). On SUSE the NVIDIA device nodes are
+    # root:video mode 0660, so that user gets "Insufficient Permissions" / "no CUDA-capable device".
+    # Put NVIDIA_DEVICE_GID=$(stat -c %g /dev/nvidiactl) in deploy/.env on such hosts; the default
+    # (root group, gid 0) grants nothing extra where the nodes are 0666 (Ubuntu, Amazon Linux).
+    group_add:
+      - "${NVIDIA_DEVICE_GID:-0}"
     deploy:
       resources:
         reservations:

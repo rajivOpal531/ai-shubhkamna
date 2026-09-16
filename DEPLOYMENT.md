@@ -104,11 +104,15 @@ CUDA libraries, and compose does not hand the device to the container. To run `/
    `docker run --gpus all`); the older `driver: nvidia` reservation starts the container without a
    GPU on CDI-based Docker.
 2. Enable the GPU override once per host. `deploy.sh` and `rollout-api.sh` read `deploy/.env`, so
-   every compose call picks it up:
+   every compose call picks it up. The second line matters on SUSE, where the NVIDIA device nodes
+   are `root:video` mode 0660 and the api's unprivileged user could not open them otherwise
+   (`ls -la /dev/nvidiactl` shows it); it is harmless elsewhere.
 
    ```bash
-   echo "COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml" >> ~/ai-shubhkamna/deploy/.env
-   ~/ai-shubhkamna/deploy/deploy.sh api
+   cd ~/ai-shubhkamna/deploy
+   echo "COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml" >> .env
+   echo "NVIDIA_DEVICE_GID=$(stat -c %g /dev/nvidiactl)" >> .env
+   ./deploy.sh api
    ```
 
    `deploy/docker-compose.gpu.yml` switches the build to `server/Dockerfile.gpu` (a

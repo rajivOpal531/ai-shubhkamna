@@ -1,0 +1,23 @@
+# Override for a GPU host: build the CUDA image and hand every NVIDIA GPU to the api container.
+# Not loaded by default (the CPU host would fail to start with a device reservation it cannot
+# satisfy). Enable it once per host by listing it in deploy/.env, which every compose call in
+# deploy.sh and rollout-api.sh picks up:
+#   echo "COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml" >> .env
+# Needs NVIDIA driver >= 580 (CUDA 13) and the NVIDIA Container Toolkit on the host; see
+# DEPLOYMENT.md, "GPU host".
+services:
+  api:
+    build:
+      context: ../server
+      dockerfile: Dockerfile.gpu
+    environment:
+      # rembg falls back to CPU silently when the GPU is unreachable. Refuse to start instead, so
+      # rollout-api.sh sees an unhealthy container and keeps the old one serving.
+      REQUIRE_GPU: "true"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

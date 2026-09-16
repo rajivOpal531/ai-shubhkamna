@@ -1,0 +1,6 @@
+# CUDA inference (Dockerfile.gpu). PyPI wheels of onnxruntime-gpu >= 1.27 are built against
+# CUDA 13 + cuDNN 9, which is what the nvidia/cuda:13.x-cudnn base image in Dockerfile.gpu ships;
+# keep the two in step when bumping either. Never install this next to plain onnxruntime: both
+# ship the same `onnxruntime` package and whichever was installed last silently wins.
+-r requirements-base.txt
+onnxruntime-gpu>=1.27,<2

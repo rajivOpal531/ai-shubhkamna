@@ -22,7 +22,7 @@ def test_health_reports_model_loaded_when_remover_injected():
 def test_lifespan_builds_remover_from_settings_when_none_injected(monkeypatch):
     built: list[str] = []
 
-    def fake_make_remover(model_name: str):
+    def fake_make_remover(model_name: str, **_):
         built.append(model_name)
         return lambda img: img
 
@@ -43,7 +43,7 @@ def test_cors_allows_configured_origin_and_rejects_others():
 
 
 def test_lifespan_builds_s3_uploader_from_settings_when_none_injected(monkeypatch):
-    monkeypatch.setattr("app.main.make_remover", lambda model_name: (lambda img: img))
+    monkeypatch.setattr("app.main.make_remover", lambda model_name, **_: (lambda img: img))
 
     recorded = {}
 
@@ -79,7 +79,7 @@ def test_lifespan_builds_s3_uploader_from_settings_when_none_injected(monkeypatc
 
 
 def test_lifespan_builds_local_uploader_when_backend_is_local(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.main.make_remover", lambda model_name: (lambda img: img))
+    monkeypatch.setattr("app.main.make_remover", lambda model_name, **_: (lambda img: img))
     app = create_app(
         settings=make_settings(
             response_mode="url",

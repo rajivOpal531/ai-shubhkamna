@@ -260,6 +260,7 @@ them yourself:
 | `MAX_CONCURRENT_COMPOSITES`       | Concurrent background-removal jobs allowed                              |
 | `JWT_VALIDATE_URL`                | Optional URL this service calls to validate the caller's bearer token    |
 | `REMBG_MODEL`                     | rembg model name; `isnet-general-use` is the one baked into the image    |
+| `REQUIRE_GPU`                     | `true` = refuse to start unless rembg runs on CUDA (set by the GPU compose override; default `false`) |
 | `STORAGE_BACKEND`                 | Local development only — never set on Railway. `s3` (default) or `local`; see "Local end-to-end without AWS" above |
 | `LOCAL_STORAGE_DIR`                | Local development only — never set on Railway. Directory `STORAGE_BACKEND=local` writes cards to |
 | `PUBLIC_BASE_URL`                  | Local development only — never set on Railway. Base URL `STORAGE_BACKEND=local` serves cards from |

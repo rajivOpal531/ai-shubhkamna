@@ -1,0 +1,14 @@
+# Shared by requirements.txt (CPU) and requirements-gpu.txt (CUDA). The only thing those two add is
+# the onnxruntime flavour, so keep every other dependency here.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9
+rembg>=2.0.59,<3  # no [cpu]/[gpu] extra: the onnxruntime flavour is chosen by the including file
+pillow>=10.4,<12
+pillow-heif>=0.16  # decode iOS HEIC/HEIF gallery photos (bundles libheif; no apt package needed)
+boto3>=1.35,<2
+slowapi>=0.1.9,<1
+httpx>=0.27,<1
+pyjwt>=2.8,<3
+cryptography>=42,<51
+opencv-python-headless>=4.9,<6

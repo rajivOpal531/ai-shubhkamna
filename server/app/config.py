@@ -31,6 +31,7 @@ class Settings:
     profile_iv_secret: str
     face_check_enabled: bool
     face_score_threshold: float
+    require_gpu: bool
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -77,4 +78,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         profile_iv_secret=env.get("PROFILE_DECRYPT_IV", "").strip(),
         face_check_enabled=env.get("FACE_CHECK", "true").strip().lower() == "true",
         face_score_threshold=float(env.get("FACE_SCORE_THRESHOLD", "0.7")),
+        # Fail startup unless rembg runs on CUDA (set by deploy/docker-compose.gpu.yml).
+        require_gpu=env.get("REQUIRE_GPU", "false").strip().lower() == "true",
     )

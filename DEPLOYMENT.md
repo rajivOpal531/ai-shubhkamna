@@ -68,6 +68,53 @@ keep working throughout: no 502s while the model loads. If the new container cra
 healthy, it is removed and the old one keeps serving (the script exits non-zero). With less than
 2.5 GB of free RAM it falls back to an in-place restart, which does cause about a minute of errors.
 
+### GPU host
+
+By default the API runs the rembg model on CPU (`server/Dockerfile`, `rembg` + `onnxruntime`). A
+GPU on the instance changes nothing by itself: the CPU wheel has no CUDA provider, the image has no
+CUDA libraries, and compose does not hand the device to the container. To run `/composite` and
+`/cutout` on the GPU, all three change, and only on that host:
+
+1. Use a GPU instance (for example `g4dn.xlarge` in `ap-south-1`; T4 or newer) and install an
+   NVIDIA driver **>= 580** (CUDA 13) plus the
+   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+   `nvidia-smi` on the host and `docker run --rm --gpus all ubuntu nvidia-smi` must both work first.
+2. Enable the GPU override once per host. `deploy.sh` and `rollout-api.sh` read `deploy/.env`, so
+   every compose call picks it up:
+
+   ```bash
+   echo "COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml" >> ~/ai-shubhkamna/deploy/.env
+   ~/ai-shubhkamna/deploy/deploy.sh api
+   ```
+
+   `deploy/docker-compose.gpu.yml` switches the build to `server/Dockerfile.gpu` (a
+   `nvidia/cuda:13.x-cudnn` base with `requirements-gpu.txt`, i.e. `onnxruntime-gpu`), reserves
+   every NVIDIA GPU for the `api` service, and sets `REQUIRE_GPU=true`. The image is a few GB
+   larger than the CPU one. The build fails if the installed onnxruntime has no CUDA provider.
+3. Confirm the model really runs on the GPU. rembg falls back to CPU silently, which is why the
+   override sets `REQUIRE_GPU=true`: the api then refuses to start unless the rembg session runs
+   on `CUDAExecutionProvider`, `rollout-api.sh` sees the new container never get healthy, removes
+   it and keeps the old one serving. The reason is in the log:
+
+   ```bash
+   cd ~/ai-shubhkamna/deploy && docker compose logs api | grep -E "providers=|REQUIRE_GPU|not reachable"
+   # healthy: rembg model=isnet-general-use providers=['CUDAExecutionProvider', 'CPUExecutionProvider'] ...
+   ```
+
+   The usual causes of a CPU-only session are a host driver older than the CUDA version the image
+   was built with (CUDA 13 -> driver >= 580), the container toolkit not installed, or the override
+   not loaded. `nvidia-smi` on the host shows the `python` process while a request is in flight.
+
+Version coupling to keep in mind when upgrading: PyPI wheels of `onnxruntime-gpu` >= 1.27 are built
+for CUDA 13 (1.20-1.26 were CUDA 12). `server/Dockerfile.gpu` and `server/requirements-gpu.txt` must
+move together; a mismatch does not fail the build, it only shows up as the `REQUIRE_GPU` startup error.
+
+Once on a GPU, per-photo inference is much faster than the 2-3 s on CPU, so `MAX_CONCURRENT_COMPOSITES`
+in `api.env` can be raised above the CPU-sized default of 2 (see `server/README.md`).
+
+The CPU host needs nothing from this section; without the `COMPOSE_FILE` line the CPU image is
+built and deployed exactly as before.
+
 ### Adding a backend route
 
 Add the path to the `@api path` line in `deploy/caddy/Caddyfile` in the same change. A route missing

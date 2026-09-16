@@ -217,7 +217,7 @@ def create_app(
     async def lifespan(_: FastAPI):
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
         if runtime.remover is None:
-            runtime.remover = make_remover(settings.model_name)
+            runtime.remover = make_remover(settings.model_name, require_gpu=settings.require_gpu)
         if runtime.face_detector is None and settings.face_check_enabled:
             runtime.face_detector = make_face_detector(score_threshold=settings.face_score_threshold)
         if runtime.uploader is None and settings.response_mode == "url":

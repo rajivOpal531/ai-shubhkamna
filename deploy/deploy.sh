@@ -24,6 +24,7 @@ main() {
   echo ">> Pulling latest master"
   git -C "$repo" pull --ff-only origin master
   git -C "$repo" --no-pager log --oneline -1
+  restore_missing_tracked_files "$repo"
 
   if [[ "$target" == all || "$target" == ui ]]; then
     echo ">> Building frontend (inside node:20-alpine; no Node needed on the host)"
@@ -60,6 +61,18 @@ main() {
   echo "!! /health is not answering through Caddy" >&2
   docker compose ps >&2
   exit 1
+}
+
+# A tracked file deleted on the host (it happened to package-lock.json) survives `git pull --ff-only`
+# when master did not touch it, and the build then fails. Deploys must build exactly master, so put
+# any such file back. Untracked files (deploy/api.env, deploy/.env, dist/) are never affected.
+restore_missing_tracked_files() {
+  local repo="$1" missing
+  missing="$(git -C "$repo" ls-files --deleted)"
+  [[ -n "$missing" ]] || return 0
+  echo ">> Restoring tracked files missing from the checkout:"
+  echo "$missing" | sed 's/^/   /'
+  git -C "$repo" ls-files --deleted -z | xargs -0 -r git -C "$repo" checkout --
 }
 
 reload_caddy() {

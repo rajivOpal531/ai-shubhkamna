@@ -86,6 +86,8 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: /^post$/i }));
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith(expect.stringContaining('jwt=test-token')));
+    // The Media Wall redirect carries source=aiShubhKaamna so it filters to AI Shubhkamna posts.
+    expect(replace).toHaveBeenCalledWith(expect.stringContaining('source=aiShubhKaamna'));
     expect(createPostByImageUrl).toHaveBeenCalledWith(
       expect.objectContaining({ jwt: 'test-token', text: 'Happy Birthday!' }),
     );

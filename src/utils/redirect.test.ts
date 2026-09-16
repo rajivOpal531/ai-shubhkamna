@@ -13,6 +13,12 @@ describe('buildRedirectUrl', () => {
       'https://example.com/page?x=1&jwt=tok',
     );
   });
+
+  it('appends extra params (e.g. source) alongside jwt', () => {
+    expect(buildRedirectUrl('https://example.com/', 'tok', { source: 'aiShubhKaamna' })).toBe(
+      'https://example.com/?jwt=tok&source=aiShubhKaamna',
+    );
+  });
 });
 
 describe('redirectWithJwt', () => {

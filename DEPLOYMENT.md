@@ -82,10 +82,27 @@ GPU on the instance changes nothing by itself: the CPU wheel has no CUDA provide
 CUDA libraries, and compose does not hand the device to the container. To run `/composite` and
 `/cutout` on the GPU, all three change, and only on that host:
 
-1. Use a GPU instance (for example `g4dn.xlarge` in `ap-south-1`; T4 or newer) and install an
-   NVIDIA driver **>= 580** (CUDA 13) plus the
-   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-   `nvidia-smi` on the host and `docker run --rm --gpus all ubuntu nvidia-smi` must both work first.
+1. Use a GPU instance (for example `g4dn.xlarge` in `ap-south-1`; T4 or newer) with an NVIDIA
+   driver **>= 580** (CUDA 13). `nvidia-smi` on the host must show the GPU. Then install the
+   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+   and generate the CDI spec that current Docker uses to hand GPUs to containers (SLES shown;
+   apt/dnf equivalents in the NVIDIA guide):
+
+   ```bash
+   sudo zypper ar https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo
+   sudo zypper --gpg-auto-import-keys install -y nvidia-container-toolkit
+   sudo nvidia-ctk runtime configure --runtime=docker
+   sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+   nvidia-ctk cdi list                              # nvidia.com/gpu=0 ... nvidia.com/gpu=all
+   sudo systemctl restart docker
+   docker run --rm --gpus all ubuntu nvidia-smi     # must print the GPU table
+   ```
+
+   The toolkit installs an `nvidia-cdi-refresh` service that regenerates the spec after driver
+   upgrades; if a container ever loses the GPU after an upgrade, rerun the `cdi generate` line.
+   The compose override requests the GPU as the CDI device `nvidia.com/gpu=all` (the same path as
+   `docker run --gpus all`); the older `driver: nvidia` reservation starts the container without a
+   GPU on CDI-based Docker.
 2. Enable the GPU override once per host. `deploy.sh` and `rollout-api.sh` read `deploy/.env`, so
    every compose call picks it up:
 

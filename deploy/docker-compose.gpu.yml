@@ -18,6 +18,12 @@ services:
       resources:
         reservations:
           devices:
-            - driver: nvidia
-              count: all
+            # CDI (Container Device Interface) is how current Docker (28+, and 25+ with the "cdi"
+            # feature on) hands GPUs to containers; it is the path `docker run --gpus all` takes.
+            # The older `driver: nvidia` reservation goes through the legacy hook and on such hosts
+            # starts the container with no GPU at all (rembg then fails REQUIRE_GPU). The device
+            # names come from `nvidia-ctk cdi list` after `nvidia-ctk cdi generate`.
+            - driver: cdi
+              device_ids:
+                - nvidia.com/gpu=all
               capabilities: [gpu]

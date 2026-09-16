@@ -7,7 +7,9 @@
 # does not fail the build: the CUDA provider just fails to load at runtime and rembg silently runs
 # on CPU (REQUIRE_GPU=true, set by the compose override, turns that into a startup failure).
 # CUDA 13 needs NVIDIA driver >= 580 on the host and supports Turing (T4 / g4dn) and newer.
-FROM nvidia/cuda:13.0.3-cudnn-runtime-ubuntu22.04
+# Ubuntu 24.04, not 22.04: onnxruntime-gpu >= 1.27 and rembg >= 2.0.70 only publish wheels for
+# Python >= 3.11, and 22.04 ships 3.10 (pip then reports "No matching distribution").
+FROM nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -18,13 +20,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv
 
-# Ubuntu 22.04 ships Python 3.10, which the app supports. Same native libraries as ./Dockerfile:
-# libgl1/libglib2.0-0 for opencv (via rembg), libraqm0/libfribidi0/libharfbuzz0b for Indic text
-# shaping, libheif1/libde265-0 for HEIC decode.
+# Ubuntu 24.04 ships Python 3.12. Same native libraries as ./Dockerfile: libgl1/libglib2.0-0t64
+# (24.04's name for libglib2.0-0) for opencv (via rembg), libraqm0/libfribidi0/libharfbuzz0b for
+# Indic text shaping, libheif1/libde265-0 for HEIC decode. The venv sidesteps 24.04's
+# "externally managed" system Python.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       python3 python3-venv python3-pip \
-      libgl1 libglib2.0-0 libraqm0 libfribidi0 libharfbuzz0b libheif1 libde265-0 \
+      libgl1 libglib2.0-0t64 libraqm0 libfribidi0 libharfbuzz0b libheif1 libde265-0 \
  && rm -rf /var/lib/apt/lists/* \
  && python3 -m venv /opt/venv \
  && pip install --no-cache-dir --upgrade pip

@@ -86,7 +86,8 @@ relabel_for_selinux() {
   [[ "$(cat /sys/fs/selinux/enforce 2>/dev/null)" == 1 ]] || return 0
   echo ">> SELinux is enforcing: labelling mounted directories for containers"
   mkdir -p "$repo/dist"
-  chcon -R -t container_file_t "$repo/deploy/caddy" "$repo/dist" \n    || echo "!! chcon failed; if Caddy cannot read its Caddyfile, run it manually with sudo" >&2
+  chcon -R -t container_file_t "$repo/deploy/caddy" "$repo/dist" ||
+    echo "!! chcon failed; if Caddy cannot read its Caddyfile, run it manually with sudo" >&2
 }
 
 reload_caddy() {
